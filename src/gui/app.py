@@ -133,7 +133,7 @@ class App(tk.Tk):
 
         l_row = 0
         self.var_drone_model = tk.StringVar(value="mavic3e")
-        drone_list = ["mavic3e", "mavic3t", "m30", "m30t", "m300", "m350", "p4r"]
+        drone_list = enums.get_supported_drone_models()
         add_item(group_flight, "드론 모델", self.var_drone_model, values=drone_list)
 
         self.var_gimbal_pitch = tk.StringVar(value="-90.0")
@@ -211,7 +211,7 @@ class App(tk.Tk):
 
         self.var_pack_kmz = tk.BooleanVar(value=True)
         self.var_set_times = tk.BooleanVar(value=True)
-        self.var_set_takeoff_ref_point = tk.BooleanVar(value=False)
+        self.var_set_takeoff_ref_point = tk.BooleanVar(value=True)
         
         ttk.Checkbutton(group_opt, text="KMZ 패키징 사용", variable=self.var_pack_kmz).grid(row=o_row, column=0, columnspan=2, sticky=tk.W)
         o_row += 1

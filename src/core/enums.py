@@ -15,55 +15,71 @@ def get_drone_enum_values(drone_model: str) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: (droneEnumValue, droneSubEnumValue)
     """
-    # 샘플 파일에서 확인된 정확한 드론 enum 값 적용
+    # DJI Cloud API 및 WPML 표준 명세 기반 enum 맵핑
     model_values = {
-        'mavic3e': (77, 0),      # Mavic 3E
-        'mavic3t': (79, 0),      # Mavic 3T
-        'mavic3m': (98, 0),      # Mavic 3M
-        'm30': (83, 0),          # Matrice 30
-        'm30t': (89, 0),         # Matrice 30T
-        'm300': (60, 0),         # Matrice 300 RTK
-        'm350': (99, 0),         # Matrice 350 RTK
-        'p4r': (28, 0),          # Phantom 4 RTK
-        'p4m': (44, 0),          # Phantom 4 Multispectral
-        'm210rtk_v2': (41, 0),   # Matrice 210 RTK V2
-        'm600pro': (13, 0),      # Matrice 600 Pro
-        'inspire2': (18, 0),     # Inspire 2
-        'mavic2pro': (26, 0),    # Mavic 2 Pro
-        'mavic2zoom': (27, 0),   # Mavic 2 Zoom
-        'mavic2enterprise': (30, 0), # Mavic 2 Enterprise
-        'mavic2enterprise_dual': (38, 0), # Mavic 2 Enterprise Dual
-        'mavic2enterprise_advanced': (67, 0), # Mavic 2 Enterprise Advanced
-        'mavicair2': (58, 0),    # Mavic Air 2
-        'air2s': (68, 0),        # DJI Air 2S
-        'mini2': (61, 0),        # DJI Mini 2
-        'mini_se': (70, 0),      # DJI Mini SE
-        'mini3pro': (76, 0),     # DJI Mini 3 Pro
-        'mini3': (96, 0),        # DJI Mini 3
-        'mavic3': (73, 0),       # Mavic 3
-        'mavic3_cine': (74, 0),  # Mavic 3 Cine
-        'avata': (88, 0),        # DJI Avata
-        'fpv': (66, 0),          # DJI FPV
-        'm30_dock': (83, 1),     # Matrice 30 Dock Version
-        'm30t_dock': (89, 1),    # Matrice 30T Dock Version
-        'mavic3e_cn': (77, 1),   # Mavic 3E (China)
-        'mavic3t_cn': (79, 1),   # Mavic 3T (China)
-        'mavic3m_cn': (98, 1),   # Mavic 3M (China)
-        'm300_cn': (60, 1),      # Matrice 300 RTK (China)
-        'm350_cn': (99, 1),      # Matrice 350 RTK (China)
-        'agras_t10': (63, 0),    # Agras T10
-        'agras_t16': (31, 0),    # Agras T16
-        'agras_t20': (59, 0),    # Agras T20
-        'agras_t30': (69, 0),    # Agras T30
-        'agras_t40': (91, 0),    # Agras T40
-        'agras_t20p': (92, 0),   # Agras T20P
-        'agras_t50': (101, 0),   # Agras T50
-        'agras_t25': (102, 0),   # Agras T25
-        'unknown': (0, 0)        # Default/Unknown
+        # Mavic 3 Enterprise Series (77)
+        'mavic3e': (77, 0),
+        'mavic3t': (77, 1),
+        'mavic3m': (77, 2),
+        
+        # Matrice 30 Series (67)
+        'm30': (67, 0),
+        'm30t': (67, 1),
+        
+        # Matrice 300/350 Series
+        'm300': (60, 0),
+        'm350': (89, 0),
+        
+        # Dock 2 전용 기체 (Matrice 3D)
+        'm3d': (91, 0),
+        'm3td': (91, 1),
+        
+        # 미니 및 에어 시리즈 (엔터프라이즈 기능 지원 기상)
+        'mini3pro': (76, 0),
+        'mini3': (96, 0),
+        'air2s': (68, 0),
+        'mavic3': (73, 0),
+        'mavic3_cine': (74, 0),
+
+        # Phantom 4 Series
+        'p4r': (28, 0),
+        'p4m': (44, 0),
+
+        # 엔터프라이즈 레거시
+        'm210rtk_v2': (41, 0),
+        'm600pro': (13, 0),
+        'inspire2': (18, 0),
+
+        # 산업용/농업용 특수 기체
+        'flycart30': (103, 0),
+        'agras_t50': (101, 0),
+        'agras_t40': (91, 0),
+        'agras_t30': (69, 0),
+        'agras_t20p': (92, 0),
+        'agras_t10': (63, 0),
+        
+        'unknown': (0, 0)
     }
     
-    # 모델명을 소문자로 변환하여 조회
     return model_values.get(drone_model.lower(), (0, 0))
+
+
+def get_supported_drone_models() -> list[str]:
+    """
+    지원하는 전체 드론 모델 목록을 가나다순으로 반환합니다.
+    """
+    # get_drone_enum_values 내부의 키 목록과 동일하게 유지
+    models = [
+        'mavic3e', 'mavic3t', 'mavic3m',
+        'm30', 'm30t', 'm300', 'm350',
+        'm3d', 'm3td',
+        'p4r', 'p4m',
+        'mini3pro', 'mini3', 'air2s',
+        'mavic3', 'mavic3_cine',
+        'm210rtk_v2', 'm600pro', 'inspire2',
+        'flycart30', 'agras_t50', 'agras_t40', 'agras_t30', 'agras_t20p', 'agras_t10'
+    ]
+    return sorted(models)
 
 
 def get_payload_enum_values(drone_model: str) -> Tuple[int, int]:
@@ -76,42 +92,40 @@ def get_payload_enum_values(drone_model: str) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: (payloadEnumValue, payloadPositionIndex)
     """
-    # 샘플 파일에서 확인된 정확한 페이로드 enum 값 적용
+    # 페이로드 맵핑 (드론 모델별 기본 장착 카메라 기준)
     payload_values = {
-        'mavic3e': (65, 0),      # Mavic 3E Camera
-        'mavic3t': (66, 0),      # Mavic 3T Camera (Thermal)
-        'mavic3m': (89, 0),      # Mavic 3M Camera (Multispectral)
-        'm30': (75, 0),          # Matrice 30 Camera
-        'm30t': (76, 0),         # Matrice 30T Camera (Thermal)
-        'm300_h20': (52, 0),     # Zenmuse H20
-        'm300_h20t': (53, 0),    # Zenmuse H20T
-        'm300_xt2': (26, 0),     # Zenmuse XT2
-        'm300_z30': (20, 0),     # Zenmuse Z30
-        'm300_p1': (61, 0),      # Zenmuse P1
-        'm300_l1': (62, 0),      # Zenmuse L1
-        'm350_h20': (52, 0),     # Zenmuse H20 (M350)
-        'm350_h20t': (53, 0),    # Zenmuse H20T (M350)
-        'm350_p1': (61, 0),      # Zenmuse P1 (M350)
-        'm350_l1': (62, 0),      # Zenmuse L1 (M350)
-        'm350_h20n': (87, 0),    # Zenmuse H20N (M350)
-        'p4r': (39, 0),          # Phantom 4 RTK Camera
-        'p4m': (50, 0),          # Phantom 4 Multispectral Camera
-        'mavic2pro': (28, 0),    # Mavic 2 Pro Camera
-        'mavic2zoom': (29, 0),   # Mavic 2 Zoom Camera
-        'mavic2enterprise': (33, 0), # Mavic 2 Enterprise Camera
-        'mavic2enterprise_dual': (41, 0), # Mavic 2 Enterprise Dual Camera
-        'mavic2enterprise_advanced': (60, 0), # Mavic 2 Enterprise Advanced Camera
-        'mavicair2': (58, 0),    # Mavic Air 2 Camera
-        'air2s': (64, 0),        # DJI Air 2S Camera
-        'mini2': (59, 0),        # DJI Mini 2 Camera
-        'mini_se': (63, 0),      # DJI Mini SE Camera
-        'mini3pro': (73, 0),     # DJI Mini 3 Pro Camera
-        'mini3': (88, 0),        # DJI Mini 3 Camera
-        'mavic3': (67, 0),       # Mavic 3 Camera
-        'mavic3_cine': (67, 0),  # Mavic 3 Cine Camera (Same as Mavic 3)
-        'avata': (79, 0),        # DJI Avata Camera
-        'fpv': (68, 0),          # DJI FPV Camera
-        'unknown': (0, 0)        # Default/Unknown
+        'mavic3e': (65, 0),      # M3E Wide
+        'mavic3t': (66, 0),      # M3T Thermal
+        'mavic3m': (89, 0),      # M3M Multispectral
+        
+        'm30': (75, 0),
+        'm30t': (76, 0),
+        
+        'm300_h20': (52, 0),
+        'm300_h20t': (53, 0),
+        'm300_p1': (61, 0),
+        'm300_l1': (62, 0),
+        
+        'm350_h20': (52, 0),
+        'm350_h20t': (53, 0),
+        'm350_p1': (61, 0),
+        'm350_l1': (62, 0),
+        'm350_l2': (114, 0),     # Zenmuse L2
+        'm350_h30': (120, 0),    # Zenmuse H30
+        'm350_h30t': (121, 0),   # Zenmuse H30T
+        
+        'm3d': (91, 0),
+        'm3td': (92, 0),
+        
+        'p4r': (39, 0),
+        'p4m': (50, 0),
+        'mini3pro': (73, 0),
+        'mini3': (88, 0),
+        'air2s': (64, 0),
+        'mavic3': (67, 0),
+        'flycart30': (95, 0),
+        
+        'unknown': (0, 0)
     }
     
     # 모델명을 소문자로 변환하여 조회
