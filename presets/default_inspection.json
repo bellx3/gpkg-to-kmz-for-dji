@@ -1,0 +1,13 @@
+{
+    "altitude": 50.0,
+    "shoot_height": 50.0,
+    "margin": 0,
+    "overlap_camera_h": 80,
+    "overlap_camera_w": 70,
+    "overlap_lidar_h": 50,
+    "overlap_lidar_w": 50,
+    "auto_flight_speed": 5,
+    "global_transitional_speed": 10,
+    "takeoff_security_height": 30,
+    "simplify_tolerance": 0.5
+}
