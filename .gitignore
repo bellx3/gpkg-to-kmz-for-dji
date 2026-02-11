@@ -9,7 +9,6 @@ venv/
 input/
 output/
 *.zip
-.agent/
 
 # Presets - Keep the default sample, ignore others
 presets/*.json

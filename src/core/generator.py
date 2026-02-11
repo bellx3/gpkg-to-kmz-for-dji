@@ -5,6 +5,8 @@ import time
 import re
 from typing import List, Tuple, Optional, Dict
 from . import enums as dji_enums
+from . import validator
+from . import reporter
 
 NS = {
     'kml': 'http://www.opengis.net/kml/2.2',
@@ -141,16 +143,18 @@ def read_gpkg_to_gdf(src_gpkg_path: Path, layer: Optional[str] = None):
 
 def parse_polygon_coords_from_gpkg(src_gpkg_path: Path, layer: Optional[str] = None,
                                    to_epsg: int = 4326,
-                                   simplify_tolerance: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
+                                   simplify_tolerance: float = 0.0,
+                                   geometry_buffer_m: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
     """
     GPKG 파일을 읽어 WGS84 좌표 리스트를 반환하는 래퍼 함수.
     """
     gdf = read_gpkg_to_gdf(src_gpkg_path, layer=layer)
-    return parse_polygon_coords_from_gpkg_direct(gdf, to_epsg=to_epsg, simplify_tolerance=simplify_tolerance)
+    return parse_polygon_coords_from_gpkg_direct(gdf, to_epsg=to_epsg, simplify_tolerance=simplify_tolerance, geometry_buffer_m=geometry_buffer_m)
 
 
 def parse_polygon_coords_from_gpkg_direct(gdf, to_epsg: int = 4326,
-                                          simplify_tolerance: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
+                                          simplify_tolerance: float = 0.0,
+                                          geometry_buffer_m: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
     """
     이미 로드된 GeoDataFrame에서 폴리곤을 추출하고 변환/단순화 수행.
     """
@@ -174,7 +178,15 @@ def parse_polygon_coords_from_gpkg_direct(gdf, to_epsg: int = 4326,
     else:
         raise ValueError(f'지원하지 않는 지오메트리 타입: {u.geom_type}')
 
-    # 2. 지오메트리 단순화 (Simplify)
+    # 2. 지오메트리 버퍼 (Buffer)
+    if geometry_buffer_m != 0:
+        actual_buf = geometry_buffer_m
+        # 만약 지리 좌표계(도 단위)라면 미터 단위를 도 단위로 대략적 변환
+        if gdf.crs and gdf.crs.is_geographic:
+            actual_buf = geometry_buffer_m / 111111.0
+        poly = poly.buffer(actual_buf)
+
+    # 3. 지오메트리 단순화 (Simplify)
     if simplify_tolerance > 0:
         actual_tol = simplify_tolerance
         # 만약 지리 좌표계(도 단위)라면 미터 단위 오차를 도 단위로 대략적 변환
@@ -182,7 +194,7 @@ def parse_polygon_coords_from_gpkg_direct(gdf, to_epsg: int = 4326,
             actual_tol = simplify_tolerance / 111111.0
         poly = poly.simplify(actual_tol, preserve_topology=True)
 
-    # 3. 좌표계 변환 (WGS84로 변환하기 위해 임시 GeoSeries 사용)
+    # 4. 좌표계 변환 (WGS84로 변환하기 위해 임시 GeoSeries 사용)
     import geopandas as gpd
     from shapely.geometry import mapping, shape
     gs = gpd.GeoSeries([poly], crs=gdf.crs)
@@ -462,6 +474,9 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
         out_dir = missions_dir.parent / 'output'
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 리포트용 결과 저장 리스트
+    batch_results = []
 
     def save_result(lonlat, dynm, src_name):
         if pack_kmz:
@@ -476,6 +491,18 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
             inject_coords_to_template(template_path, lonlat, out_kml, set_times=set_times,
                                       set_takeoff_ref_point=set_takeoff_ref_point, overrides=overrides)
             print(f'완료: {src_name} -> {out_kml.name}')
+
+        # 리포트 데이터 수집
+        v_res = validate_mission_config(overrides)
+        batch_results.append({
+            'name': dynm,
+            'success': True,
+            'status': v_res.get('status'),
+            'messages': v_res.get('messages'),
+            'metrics': v_res.get('metrics'),
+            'altitude': overrides.get('altitude') if overrides else None,
+            'speed': overrides.get('auto_flight_speed') if overrides else None
+        })
 
     def process_one(file_path: Path, is_gpkg: bool):
         try:
@@ -492,7 +519,13 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
                     # 개별 피처 처리
                     import geopandas as gpd
                     single_gdf = gpd.GeoDataFrame([row], crs=gdf_all.crs)
-                    lonlat, _ = parse_polygon_coords_from_gpkg_direct(single_gdf, to_epsg=4326, simplify_tolerance=simplify_tolerance)
+                    
+                    geo_buf = overrides.get('geometry_buffer_m', 0.0) if overrides else 0.0
+                    lonlat, _ = parse_polygon_coords_from_gpkg_direct(
+                        single_gdf, to_epsg=4326, 
+                        simplify_tolerance=simplify_tolerance,
+                        geometry_buffer_m=geo_buf
+                    )
                     
                     # 명명 필드 처리
                     dynm = fallback_name = f"{file_path.stem}_{idx}"
@@ -510,7 +543,17 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
             
             return True
         except Exception as e:
-            print(f'오류: {file_path.name}: {e}')
+            msg = f'오류: {file_path.name}: {e}'
+            print(msg)
+            batch_results.append({
+                'name': file_path.name,
+                'success': False,
+                'status': 'danger',
+                'messages': [msg],
+                'metrics': {},
+                'altitude': overrides.get('altitude') if overrides else None,
+                'speed': overrides.get('auto_flight_speed') if overrides else None
+            })
             return False
 
     count_ok = 0
@@ -533,6 +576,32 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
             count_err += 1
 
     print(f'총 처리: {count_ok} 성공, {count_err} 실패')
+    
+    # 리포트 생성
+    if batch_results:
+        try:
+            report_path = reporter.generate_report(batch_results, out_dir)
+            print(f'리포트 생성 완료: {report_path.name}')
+        except Exception as e:
+            print(f'리포트 생성 실패: {e}')
+
+
+# -----------------------------
+# 안전 검증 연동
+# -----------------------------
+
+def validate_mission_config(overrides: Optional[Dict]) -> Dict:
+    """
+    현재 설정값에 대한 안전 및 품질 검증을 수행합니다.
+    validator 모듈의 결과를 반환합니다.
+    """
+    if not overrides:
+        return {
+            'status': 'warning',
+            'messages': ['설정값이 없습니다.'],
+            'metrics': {}
+        }
+    return validator.validate_mission(overrides)
 
 
 # -----------------------------
@@ -555,6 +624,7 @@ if __name__ == '__main__':
     parser.add_argument('--layer', type=str, default=None, help='GPKG 레이어 이름(여러 레이어가 있는 경우 지정)')
     parser.add_argument('--naming-field', type=str, default=None, help='출력 파일명으로 사용할 필드명(KML의 SimpleData name 또는 GPKG 컬럼)')
     parser.add_argument('--simplify-tolerance', type=float, default=0.0, help='지오메트리 단순화 허용 오차(미터 단위, 예: 0.5)')
+    parser.add_argument('--geometry-buffer', type=float, default=0.0, help='고정 버퍼 확장/축소(미터 단위, 예: 5.0 또는 -5.0)')
 
     # 템플릿 오버라이드 인자
     parser.add_argument('--altitude', type=float, default=None, help='고도값(Placemark height/ellipsoidHeight, wayline globalShootHeight)')
@@ -591,6 +661,7 @@ if __name__ == '__main__':
         'takeoff_security_height': args.takeoff_security_height,
         'drone_model': args.drone_model,
         'gimbal_pitch': args.gimbal_pitch,
+        'geometry_buffer_m': args.geometry_buffer,
     }
 
     batch_process_inputs(
