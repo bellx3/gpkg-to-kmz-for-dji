@@ -171,24 +171,31 @@ class App(tk.Tk):
         self.var_margin = tk.StringVar(value="0")
         add_r_item("마진 (m)", self.var_margin)
 
-        # 중첩도 그리드 구성
+        # 중첩도 표 형식 구성
         overlap_frm = ttk.Frame(group_param)
         overlap_frm.grid(row=r_row, column=0, columnspan=2, sticky=tk.EW, pady=4)
         r_row += 1
-        overlap_frm.columnconfigure((1, 3), weight=1)
+        overlap_frm.columnconfigure((1, 2), weight=1, uniform="overlap") # 크기 통일
         
+        # 헤더
+        ttk.Label(overlap_frm, text="", width=12).grid(row=0, column=0)
+        ttk.Label(overlap_frm, text="진행방향(종) %", font=("Malgun Gothic", 8, "bold")).grid(row=0, column=1, pady=(0, 2))
+        ttk.Label(overlap_frm, text="옆경로(횡) %", font=("Malgun Gothic", 8, "bold")).grid(row=0, column=2, pady=(0, 2))
+
         self.var_overlap_camera_h = tk.StringVar(value="80")
         self.var_overlap_camera_w = tk.StringVar(value="70")
         self.var_overlap_lidar_h = tk.StringVar(value="50")
         self.var_overlap_lidar_w = tk.StringVar(value="50")
         
-        ttk.Label(overlap_frm, text="카메라 중첩 (%):").grid(row=0, column=0, sticky=tk.W)
-        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_h, width=6).grid(row=0, column=1, sticky=tk.EW, padx=2)
-        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_w, width=6).grid(row=0, column=2, sticky=tk.EW, padx=2)
+        # 카메라 행
+        ttk.Label(overlap_frm, text="카메라 중첩:").grid(row=1, column=0, sticky=tk.W)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_h, width=8, justify="center").grid(row=1, column=1, padx=2, pady=2)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_w, width=8, justify="center").grid(row=1, column=2, padx=2, pady=2)
         
-        ttk.Label(overlap_frm, text="라이다 중첩 (%):").grid(row=1, column=0, sticky=tk.W, pady=(4,0))
-        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_h, width=6).grid(row=1, column=1, sticky=tk.EW, padx=2, pady=(4,0))
-        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_w, width=6).grid(row=1, column=2, sticky=tk.EW, padx=2, pady=(4,0))
+        # 라이다 행
+        ttk.Label(overlap_frm, text="라이다 중첩:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_h, width=8, justify="center").grid(row=2, column=1, padx=2, pady=2)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_w, width=8, justify="center").grid(row=2, column=2, padx=2, pady=2)
 
 
         # 4. 기타 옵션 및 최적화
