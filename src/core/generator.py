@@ -276,6 +276,12 @@ def apply_template_overrides(root: ET.Element, overrides: Optional[Dict] = None)
     gimbal_pitch = overrides.get('gimbal_pitch')
     set_text('.//kml:Placemark/wpml:smartObliqueGimbalPitch', gimbal_pitch)
 
+    # 지형 팔로우 (Real-time Terrain Follow)
+    use_tf = overrides.get('use_terrain_follow')
+    if use_tf is not None:
+        tf_val = "1" if use_tf else "0"
+        set_text('.//wpml:waylineCoordinateSysParam/wpml:useSurfaceRelativeHeight', tf_val)
+
 
 # -----------------------------
 # 템플릿에 좌표 주입 및 KMZ 생성

@@ -67,9 +67,16 @@ class App(tk.Tk):
         self.queue = queue.Queue()
         self.worker = None
         self._build_ui()
+        
+        # 기체 변경 관찰 및 초기 상태 설정
+        self.var_drone_model.trace_add("write", self._on_drone_model_change)
+        self._on_drone_model_change()
+        
         self.after(100, self._poll_queue)
 
     def _build_ui(self):
+        self.var_status = tk.StringVar(value="준비됨")
+
         # 전체 컨테이너
         main_frm = ttk.Frame(self, padding=12)
         main_frm.pack(fill=tk.BOTH, expand=True)
@@ -147,6 +154,11 @@ class App(tk.Tk):
 
         self.var_takeoff_security_height = tk.StringVar(value="20")
         add_item(group_flight, "이륙 안전 고도 (m)", self.var_takeoff_security_height)
+        
+        self.var_use_terrain_follow = tk.BooleanVar(value=False)
+        self.chk_tf = ttk.Checkbutton(group_flight, text="실시간 지형 팔로우 활성화", variable=self.var_use_terrain_follow)
+        self.chk_tf.grid(row=l_row, column=1, sticky=tk.W, pady=2, padx=4)
+        l_row += 1
 
 
         # ---------------------------------------------------------
@@ -256,9 +268,27 @@ class App(tk.Tk):
         self.txt_log.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # 상태바
-        self.var_status = tk.StringVar(value="준비됨")
         status_bar = ttk.Label(main_frm, textvariable=self.var_status, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM, ipady=2)
+
+    def _on_drone_model_change(self, *args):
+        """드론 모델 선택에 따라 특정 기능 활성/비활성 제어"""
+        model = self.var_drone_model.get().lower()
+        
+        # 실시간 지형 팔로우 지원 기체 (WPML 기반 최신 Enterprise 모델)
+        tf_supported = [
+            'mavic3e', 'mavic3t', 'mavic3m', 
+            'm30', 'm30t', 'm300', 'm350', 
+            'm3d', 'm3td', 'flycart30'
+        ]
+        
+        if any(m in model for m in tf_supported):
+            self.chk_tf.state(['!disabled'])
+            self.var_status.set(f"{model} 모델: 지형 팔로우 지원됨")
+        else:
+            self.var_use_terrain_follow.set(False)
+            self.chk_tf.state(['disabled'])
+            self.var_status.set(f"{model} 모델: 지형 팔로우 미지원 (비활성)")
 
     def _refresh_naming_fields(self):
         fmt = (self.var_input_format.get() or '').strip().lower()
@@ -380,6 +410,7 @@ class App(tk.Tk):
                 self.var_takeoff_security_height.set(str(data.get("takeoff_security_height", "")))
                 self.var_drone_model.set(str(data.get("drone_model", "mavic3e")))
                 self.var_gimbal_pitch.set(str(data.get("gimbal_pitch", "-90.0")))
+                self.var_use_terrain_follow.set(bool(data.get("use_terrain_follow", False)))
                 if "simplify_tolerance" in data:
                     self.var_simplify_tolerance.set(str(data["simplify_tolerance"]))
             messagebox.showinfo("완료", "프리셋을 불러왔습니다.")
@@ -404,6 +435,7 @@ class App(tk.Tk):
                 "takeoff_security_height": to_int(self.var_takeoff_security_height.get()),
                 "drone_model": self.var_drone_model.get(),
                 "gimbal_pitch": to_float(self.var_gimbal_pitch.get()),
+                "use_terrain_follow": bool(self.var_use_terrain_follow.get()),
                 "simplify_tolerance": to_float(self.var_simplify_tolerance.get())
             }
             with open(f, 'w', encoding='utf-8') as j:
@@ -463,6 +495,7 @@ class App(tk.Tk):
                 "takeoff_security_height": to_int(self.var_takeoff_security_height.get()),
                 "drone_model": self.var_drone_model.get(),
                 "gimbal_pitch": to_float(self.var_gimbal_pitch.get()),
+                "use_terrain_follow": bool(self.var_use_terrain_follow.get()),
             }
 
             batch_process_inputs(
