@@ -98,7 +98,7 @@ class App(tk.Tk):
             if values:
                 cb = ttk.Combobox(parent, textvariable=var, values=values, state="readonly")
                 cb.grid(row=curr_row, column=1, sticky=tk.EW, pady=2, padx=4)
-                if not row: l_row += 1
+                if row is None: l_row += 1
                 return cb
             else:
                 ent = ttk.Entry(parent, textvariable=var)
@@ -107,7 +107,7 @@ class App(tk.Tk):
                     ttk.Button(parent, text="..", width=3, command=lambda: self._choose_dir(var)).grid(row=curr_row, column=2, pady=2)
                 if is_file:
                     ttk.Button(parent, text="..", width=3, command=lambda: self._choose_file(var, filetypes)).grid(row=curr_row, column=2, pady=2)
-                if not row: l_row += 1
+                if row is None: l_row += 1
                 return ent
 
         self.var_input_format = tk.StringVar(value="gpkg")
@@ -118,9 +118,6 @@ class App(tk.Tk):
 
         self.var_out_dir = tk.StringVar(value=str(BASE.parent.parent / "output"))
         add_item(group_path, "출력 폴더", self.var_out_dir, is_dir=True)
-
-        self.var_layer = tk.StringVar()
-        add_item(group_path, "레이어(GPKG)", self.var_layer)
 
         self.var_naming_field = tk.StringVar()
         ttk.Label(group_path, text="파일명 필드").grid(row=l_row, column=0, sticky=tk.W, pady=2)
@@ -171,14 +168,12 @@ class App(tk.Tk):
 
         self.var_altitude = tk.StringVar()
         add_r_item("임무 고도", self.var_altitude)
-        self.var_shoot_height = tk.StringVar()
-        add_r_item("촬영 고도", self.var_shoot_height)
         self.var_margin = tk.StringVar()
         add_r_item("마진(margin)", self.var_margin)
 
         # 중첩도 그리드 구성
         overlap_frm = ttk.Frame(group_param)
-        overlap_frm.grid(row=r_row, column=0, columnspan=2, fill=tk.X, pady=4)
+        overlap_frm.grid(row=r_row, column=0, columnspan=2, sticky=tk.EW, pady=4)
         r_row += 1
         overlap_frm.columnconfigure((1, 3), weight=1)
         
@@ -276,7 +271,7 @@ class App(tk.Tk):
                 return
 
         if fmt == 'gpkg':
-            candidates = self._get_gpkg_fields(input_dir, (self.var_layer.get() or '').strip() or None)
+            candidates = self._get_gpkg_fields(input_dir, None)
         elif fmt == 'kml':
             candidates = self._get_kml_fields(input_dir)
         else:
@@ -368,7 +363,6 @@ class App(tk.Tk):
             with open(f, 'r', encoding='utf-8') as j:
                 data = json.load(j)
                 self.var_altitude.set(str(data.get("altitude", "")))
-                self.var_shoot_height.set(str(data.get("shoot_height", "")))
                 self.var_margin.set(str(data.get("margin", "")))
                 self.var_overlap_camera_h.set(str(data.get("overlap_camera_h", "")))
                 self.var_overlap_camera_w.set(str(data.get("overlap_camera_w", "")))
@@ -393,7 +387,6 @@ class App(tk.Tk):
         try:
             data = {
                 "altitude": to_float(self.var_altitude.get()),
-                "shoot_height": to_float(self.var_shoot_height.get()),
                 "margin": to_int(self.var_margin.get()),
                 "overlap_camera_h": to_int(self.var_overlap_camera_h.get()),
                 "overlap_camera_w": to_int(self.var_overlap_camera_w.get()),
@@ -449,9 +442,10 @@ class App(tk.Tk):
         backup_stdout = sys.stdout
         sys.stdout = qredir
         try:
+            alt_val = to_float(self.var_altitude.get())
             overrides = {
-                "altitude": to_float(self.var_altitude.get()),
-                "shoot_height": to_float(self.var_shoot_height.get()),
+                "altitude": alt_val,
+                "shoot_height": alt_val,
                 "margin": to_int(self.var_margin.get()),
                 "overlap_camera_h": to_int(self.var_overlap_camera_h.get()),
                 "overlap_camera_w": to_int(self.var_overlap_camera_w.get()),
@@ -471,7 +465,7 @@ class App(tk.Tk):
                 out_dir=Path(self.var_out_dir.get()),
                 input_format=self.var_input_format.get(),
                 naming_field=(self.var_naming_field.get() or None),
-                layer=(self.var_layer.get() or None),
+                layer=None,
                 set_times=bool(self.var_set_times.get()),
                 set_takeoff_ref_point=bool(self.var_set_takeoff_ref_point.get()),
                 overrides=overrides,
