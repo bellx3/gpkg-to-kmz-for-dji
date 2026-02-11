@@ -137,16 +137,16 @@ class App(tk.Tk):
         add_item(group_flight, "드론 모델", self.var_drone_model, values=drone_list)
 
         self.var_gimbal_pitch = tk.StringVar(value="-90.0")
-        add_item(group_flight, "짐벌 피치", self.var_gimbal_pitch)
+        add_item(group_flight, "짐벌 피치 (°)", self.var_gimbal_pitch)
 
-        self.var_auto_flight_speed = tk.StringVar()
-        add_item(group_flight, "비행 속도", self.var_auto_flight_speed)
+        self.var_auto_flight_speed = tk.StringVar(value="10")
+        add_item(group_flight, "비행 속도 (m/s)", self.var_auto_flight_speed)
 
         self.var_global_transitional_speed = tk.StringVar()
-        add_item(group_flight, "전환 속도", self.var_global_transitional_speed)
+        add_item(group_flight, "전환 속도 (m/s)", self.var_global_transitional_speed)
 
-        self.var_takeoff_security_height = tk.StringVar()
-        add_item(group_flight, "이륙 안전 고도", self.var_takeoff_security_height)
+        self.var_takeoff_security_height = tk.StringVar(value="20")
+        add_item(group_flight, "이륙 안전 고도 (m)", self.var_takeoff_security_height)
 
 
         # ---------------------------------------------------------
@@ -166,10 +166,10 @@ class App(tk.Tk):
             ttk.Entry(group_param, textvariable=var).grid(row=r_row, column=1, sticky=tk.EW, padx=4)
             r_row += 1
 
-        self.var_altitude = tk.StringVar()
-        add_r_item("임무 고도", self.var_altitude)
-        self.var_margin = tk.StringVar()
-        add_r_item("마진(margin)", self.var_margin)
+        self.var_altitude = tk.StringVar(value="150.0")
+        add_r_item("임무 고도 (m)", self.var_altitude)
+        self.var_margin = tk.StringVar(value="0")
+        add_r_item("마진 (m)", self.var_margin)
 
         # 중첩도 그리드 구성
         overlap_frm = ttk.Frame(group_param)
@@ -177,16 +177,16 @@ class App(tk.Tk):
         r_row += 1
         overlap_frm.columnconfigure((1, 3), weight=1)
         
-        self.var_overlap_camera_h = tk.StringVar()
-        self.var_overlap_camera_w = tk.StringVar()
-        self.var_overlap_lidar_h = tk.StringVar()
-        self.var_overlap_lidar_w = tk.StringVar()
+        self.var_overlap_camera_h = tk.StringVar(value="80")
+        self.var_overlap_camera_w = tk.StringVar(value="70")
+        self.var_overlap_lidar_h = tk.StringVar(value="50")
+        self.var_overlap_lidar_w = tk.StringVar(value="50")
         
-        ttk.Label(overlap_frm, text="카메라 H/W %:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(overlap_frm, text="카메라 중첩 (%):").grid(row=0, column=0, sticky=tk.W)
         ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_h, width=6).grid(row=0, column=1, sticky=tk.EW, padx=2)
         ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_w, width=6).grid(row=0, column=2, sticky=tk.EW, padx=2)
         
-        ttk.Label(overlap_frm, text="라이다 H/W %:").grid(row=1, column=0, sticky=tk.W, pady=(4,0))
+        ttk.Label(overlap_frm, text="라이다 중첩 (%):").grid(row=1, column=0, sticky=tk.W, pady=(4,0))
         ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_h, width=6).grid(row=1, column=1, sticky=tk.EW, padx=2, pady=(4,0))
         ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_w, width=6).grid(row=1, column=2, sticky=tk.EW, padx=2, pady=(4,0))
 
@@ -198,7 +198,7 @@ class App(tk.Tk):
 
         o_row = 0
         self.var_simplify_tolerance = tk.StringVar(value="0.0")
-        ttk.Label(group_opt, text="단순화 오차(m)").grid(row=o_row, column=0, sticky=tk.W)
+        ttk.Label(group_opt, text="단순화 오차 (m)").grid(row=o_row, column=0, sticky=tk.W)
         ttk.Entry(group_opt, textvariable=self.var_simplify_tolerance).grid(row=o_row, column=1, sticky=tk.EW, padx=4)
         o_row += 1
 
