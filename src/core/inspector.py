@@ -1,7 +1,7 @@
 import sys, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 # Allow passing KMZ path as first argument; fallback to a default
-p = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r'd:\00_미션저작도구\output\하예동1751-5.kmz')
+p = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('output/sample.kmz')
 with zipfile.ZipFile(p,'r') as z:
     names = z.namelist()
     print('KMZ:', p.name)

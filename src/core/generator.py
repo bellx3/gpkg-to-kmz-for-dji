@@ -4,7 +4,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import time
 import re
 from typing import List, Tuple, Optional, Dict
-import dji_enums
+from . import enums as dji_enums
 
 NS = {
     'kml': 'http://www.opengis.net/kml/2.2',

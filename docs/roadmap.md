@@ -1,4 +1,4 @@
-# DroneMissionFactory 고도화 계획서 (Phase 3)
+# SkyMission Builder 고도화 계획서 (Phase 3)
 
 ## 1. 개요
 현재의 GPKG 기반 대량 미션 생성 로직을 바탕으로, DJI 기체별 하드웨어 특성을 반영하고 현장 설정을 "Zero"에 가깝게 만드는 정밀 미션 생성기로 업그레이드합니다.

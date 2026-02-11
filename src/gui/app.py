@@ -6,8 +6,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 # 내부 로직 호출
-from kml_setting_v2 import batch_process_inputs
-import dji_enums
+from src.core.generator import batch_process_inputs
+from src.core import enums
 
 BASE = Path(__file__).parent
 
@@ -56,7 +56,7 @@ class LogRedirector:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("미션 저작도구 - 데스크톱 UI")
+        self.title("SkyMission Builder - Desktop UI")
         self.geometry("900x700")
         self.queue = queue.Queue()
         self.worker = None
@@ -112,28 +112,28 @@ class App(tk.Tk):
         # 입력 폴더
         self.var_input_dir = tk.StringVar()
         add_label("입력 폴더 경로")
-        ent_in = add_entry(self.var_input_dir, str(BASE / "input"))
+        ent_in = add_entry(self.var_input_dir, str(BASE.parent.parent / "input"))
         add_button("찾기", lambda: self._choose_dir(self.var_input_dir))
         row += 1
 
         # 템플릿 KML
         self.var_template = tk.StringVar()
         add_label("템플릿 KML 경로")
-        ent_tpl = add_entry(self.var_template, str(BASE / "template.kml"))
+        ent_tpl = add_entry(self.var_template, str(BASE.parent / "templates" / "template.kml"))
         add_button("찾기", lambda: self._choose_file(self.var_template, filetypes=[("KML 파일", "*.kml"), ("모든 파일", "*.*")]))
         row += 1
 
         # waylines
         self.var_waylines = tk.StringVar()
         add_label("waylines.wpml 경로")
-        ent_wp = add_entry(self.var_waylines, str(BASE / "waylines.wpml"))
+        ent_wp = add_entry(self.var_waylines, str(BASE.parent / "templates" / "waylines.wpml"))
         add_button("찾기", lambda: self._choose_file(self.var_waylines, filetypes=[("WPML 파일", "*.wpml"), ("모든 파일", "*.*")]))
         row += 1
 
         # 출력 폴더
         self.var_out_dir = tk.StringVar()
         add_label("출력 폴더 경로")
-        ent_out = add_entry(self.var_out_dir, str(BASE / "output"))
+        ent_out = add_entry(self.var_out_dir, str(BASE.parent.parent / "output"))
         add_button("찾기", lambda: self._choose_dir(self.var_out_dir))
         row += 1
 
@@ -365,12 +365,12 @@ class App(tk.Tk):
             var.set(d)
 
     def _choose_file(self, var, filetypes):
-        f = filedialog.askopenfilename(initialdir=str(BASE), filetypes=filetypes)
+        f = filedialog.askopenfilename(initialdir=str(BASE.parent.parent), filetypes=filetypes)
         if f:
             var.set(f)
 
     def _on_load_preset(self):
-        f = filedialog.askopenfilename(initialdir=str(BASE / "presets"), filetypes=[("JSON 파일", "*.json"), ("모든 파일", "*.*")])
+        f = filedialog.askopenfilename(initialdir=str(BASE.parent.parent / "presets"), filetypes=[("JSON 파일", "*.json"), ("모든 파일", "*.*")])
         if not f:
             return
         import json
@@ -396,7 +396,7 @@ class App(tk.Tk):
             messagebox.showerror("오류", f"프리셋 로드 실패: {e}")
 
     def _on_save_preset(self):
-        f = filedialog.asksaveasfilename(initialdir=str(BASE / "presets"), defaultextension=".json", filetypes=[("JSON 파일", "*.json")])
+        f = filedialog.asksaveasfilename(initialdir=str(BASE.parent.parent / "presets"), defaultextension=".json", filetypes=[("JSON 파일", "*.json")])
         if not f:
             return
         import json

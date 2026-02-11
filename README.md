@@ -1,75 +1,49 @@
-# gpkg-to-kmz-for-dji
+# SkyMission Builder (gpkg-to-kmz-for-dji)
 
-개요
-- 이 도구는 GPKG 폴리곤 입력을 바탕으로 KML+WPML을 포함한 KMZ 임무 파일을 생성합니다.
-- 템플릿(template.kml, waylines.wpml)을 기반으로 고도/겹침/속도 등 주요 파라미터를 UI 또는 명령행(옵션)으로 덮어쓸 수 있습니다.
+## 개요
+이 도구는 GPKG 폴리곤 데이터를 DJI 드론용 KML/WPML 기반 KMZ 임무 파일로 대량 변환하는 전문 솔루션입니다. 복잡한 지오메트리 단순화 및 기체별 맞춤형 파라미터 설정을 원클릭으로 처리하여 현장 미션 생성 시간을 획기적으로 단축합니다.
 
-필수 준비 사항
-- 운영체제: Windows
-- Python: 3.9 이상 권장
-- 주요 라이브러리: shapely, geopandas, fiona, pyproj 등
-  - 설치 예시 (PowerShell):
-    - pip install shapely geopandas fiona pyproj
-  - 주의: GeoPandas/Fiona는 GDAL 등 네이티브 의존성이 있어 Conda 환경에서 설치 시 더 안정적입니다.
+## 핵심 기능
+- **대량 자동 변환**: 수백 개의 폴리곤이 포함된 GPKG 파일을 개별 미션 KMZ로 자동 분할 및 명명.
+- **기체 최적화**: Mavic 3E, M350 등 DJI 기체별 하드웨어 파라미터(Enum) 자동 주입.
+- **지오메트리 단순화**: 드론 컨트롤러 부하 방지를 위한 50cm 단위 폴리곤 단순화(Simplify).
+- **정밀 미션 제어**: 고도, 중첩도, 짐벌 피치, 자동 비행 속도 등 상세 파라미터 오버라이드.
+- **프리셋 시스템**: 현장별 최적 설정값을 JSON 파일로 관리하여 반복 작업 제거.
 
-폴더 구조
-- input/ : 처리할 .gpkg 파일들을 넣는 폴더
-- output/ : 생성된 .kmz 결과가 저장되는 폴더
-- template.kml, waylines.wpml : 임무 템플릿 파일
-- kml_setting_v2.py : KMZ 생성 메인 스크립트(배치 처리용)
-- ui_desktop.py : 간단 데스크톱 UI 실행 파일
-- inspect_kmz.py : 생성된 KMZ 파일 내 KML/WPML 값을 검사하는 도구
+## 프로젝트 구조
+- `src/core/`: 핵심 변환 및 검사 로직 (Generator, Inspector, Enums)
+- `src/gui/`: SkyMission Builder 데스크톱 인터페이스
+- `src/templates/`: DJI WPML 표준 KML/WPML 템플릿
+- `presets/`: 사용자 정의 미션 프리셋 (JSON)
+- `input/`: 처리할 소스 (.gpkg, .kml)
+- `output/`: 생성된 결과물 (.kmz)
+- `docs/`: 프로젝트 고도화 로드맵 및 매뉴얼
 
-실행 방법 1) 데스크톱 UI로 실행
-- PowerShell에서 프로젝트 폴더로 이동: cd d:\00_미션저작도구
-- 데스크톱 UI 실행: python ui_desktop.py
-- 화면에서 다음과 같은 값들을 입력/조정 후 실행합니다.
-  - 고도(ellipsoid/height), 촬영고도(globalShootHeight), 지면기준고도(surfaceRelativeHeight)
-  - 마진(margin)
-  - 겹침(카메라 H/W, 라이다 H/W)
-  - 자동비행속도(autoFlightSpeed), 전환속도(globalTransitionalSpeed)
-  - 이륙안전고도(takeOffSecurityHeight)
-- 실행하면 input 폴더의 GPKG 파일들을 처리하여 output 폴더에 KMZ를 생성합니다.
+## 설치 및 실행 방법
 
-실행 방법 2) 명령행(배치 처리)
-- 기본 실행:
-  - python kml_setting_v2.py --input d:\00_미션저작도구\input --output d:\00_미션저작도구\output
-- 주요 옵션(예시):
-  - --altitude 160
-  - --shoot_height 160
-  - --margin 40
-  - --overlap_camera_h 80 --overlap_camera_w 70
-  - --overlap_lidar_h 80 --overlap_lidar_w 70
-  - --auto_flight_speed 14
-  - --global_transitional_speed 15
-  - --takeoff_security_height 20
-- 전체 옵션은 도움말로 확인하세요: python kml_setting_v2.py -h
+### 1단계: 필수 라이브러리 설치
+```bash
+pip install shapely geopandas fiona pyproj pyogrio
+```
 
-결과 확인 (검증)
-- 특정 KMZ 검사:
-  - python inspect_kmz.py d:\00_미션저작도구\output\b_0.kmz
-- 검사 내용:
-  - KML의 ellipsoidHeight, height, globalShootHeight, surfaceRelativeHeight, margin, overlap(카메라/라이다), 속도/이륙안전고도 값
-  - WPML의 autoFlightSpeed, globalTransitionalSpeed, takeOffSecurityHeight 값
-  - WPML에서 각 웨이포인트의 executeHeight(개수와 샘플) 요약
-- 참고: 현재 WPML 템플릿에는 globalShootHeight/surfaceRelativeHeight 태그가 없을 수 있습니다. 이 경우 KML 수준에서만 표시되며, WPML은 각 웨이포인트의 executeHeight로 고도가 반영됩니다.
+### 2단계: 어플리케이션 실행
+프로젝트 루트 폴더에서 다음을 실행합니다.
+```bash
+python main.py
+```
 
-예시 명령 모음
-- UI 실행: python ui_desktop.py
-- 배치 생성(옵션 포함):
-  - python kml_setting_v2.py --input d:\00_미션저작도구\input --output d:\00_미션저작도구\output --altitude 160 --shoot_height 160 --margin 40 --overlap_camera_h 80 --overlap_camera_w 70 --overlap_lidar_h 80 --overlap_lidar_w 70 --auto_flight_speed 14 --global_transitional_speed 15 --takeoff_security_height 20
-- KMZ 검사: python inspect_kmz.py d:\00_미션저작도구\output\b_0.kmz
+## 사용 팁 (Workflow)
+1. `input/` 폴더에 GPKG 파일을 넣습니다.
+2. `python main.py`를 실행하여 UI를 엽니다.
+3. 대상 기체(예: Mavic 3E)를 선택하고 '프리셋 불러오기'를 통해 표준 설정값을 로드합니다.
+4. '실행' 버튼을 누르면 `output/` 폴더에 미션 파일들이 생성됩니다.
 
-자주 묻는 질문 / 문제 해결
-- GeoPandas/Fiona 설치 오류:
-  - Conda 사용을 권장합니다. 예: conda install geopandas
-- DeprecationWarning(unary_union 관련):
-  - 코드에서 shapely.ops.unary_union을 사용하도록 개선되어 경고가 제거되었습니다.
-- WPML에 globalShootHeight/surfaceRelativeHeight가 없음:
-  - 현재 템플릿에 해당 태그가 없으면 정상입니다. 필요 시 템플릿 스키마 확장을 통해 추가 가능하며, executeHeight로 웨이포인트 고도를 정확히 반영합니다.
-- 속도/고도/겹침 값이 반영되지 않는 경우:
-  - 옵션 이름과 값이 정확한지 확인하고, python kml_setting_v2.py -h로 지원 옵션을 다시 확인하세요.
+## 검증 및 유지보수
+생성된 KMZ 파일의 내부 값을 검증하려면 다음 명령을 사용하세요.
+```bash
+python src/core/inspector.py [KMZ경로]
+```
 
-참고
-- 출력 KMZ는 한글 파일명을 지원합니다.
-- 생성된 KMZ에는 template.kml과 waylines.wpml가 포함됩니다.
+## 참고
+- 본 도구는 DJI WPML 1.0.6 표준을 준수합니다.
+- 한글 파일명 및 속성값을 완벽하게 지원합니다.
