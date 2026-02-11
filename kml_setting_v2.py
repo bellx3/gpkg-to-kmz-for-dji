@@ -4,6 +4,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import time
 import re
 from typing import List, Tuple, Optional, Dict
+import dji_enums
 
 NS = {
     'kml': 'http://www.opengis.net/kml/2.2',
@@ -258,6 +259,22 @@ def apply_template_overrides(root: ET.Element, overrides: Optional[Dict] = None)
 
     # 이륙 보안 고도
     set_text('.//wpml:missionConfig/wpml:takeOffSecurityHeight', takeoff_sec_h)
+
+    # 드론 정보 주입
+    drone_model = overrides.get('drone_model')
+    if drone_model:
+        d_val, d_sub = dji_enums.get_drone_enum_values(drone_model)
+        set_text('.//wpml:missionConfig/wpml:droneInfo/wpml:droneEnumValue', d_val)
+        set_text('.//wpml:missionConfig/wpml:droneInfo/wpml:droneSubEnumValue', d_sub)
+        
+        p_val, p_idx = dji_enums.get_payload_enum_values(drone_model)
+        # payloadInfo 노드가 여러 개일 수 있으나 기본적으로 첫 번째(0번)를 타겟팅
+        set_text('.//wpml:missionConfig/wpml:payloadInfo/wpml:payloadEnumValue', p_val)
+        set_text('.//wpml:missionConfig/wpml:payloadInfo/wpml:payloadPositionIndex', p_idx)
+    
+    # 지점별 상세 비행 설정
+    gimbal_pitch = overrides.get('gimbal_pitch')
+    set_text('.//kml:Placemark/wpml:smartObliqueGimbalPitch', gimbal_pitch)
 
 
 # -----------------------------
@@ -544,6 +561,8 @@ if __name__ == '__main__':
     parser.add_argument('--auto-flight-speed', type=int, default=None, help='자동 비행 속도')
     parser.add_argument('--global-transitional-speed', type=int, default=None, help='미션 전환 속도')
     parser.add_argument('--takeoff-security-height', type=int, default=None, help='이륙 보안 고도')
+    parser.add_argument('--drone-model', type=str, default=None, help='DJI 드론 모델명 (예: mavic3e, m350)')
+    parser.add_argument('--gimbal-pitch', type=float, default=None, help='짐벌 피치 각도 (예: -90)')
 
     args = parser.parse_args()
 
@@ -564,6 +583,8 @@ if __name__ == '__main__':
         'auto_flight_speed': args.auto_flight_speed,
         'global_transitional_speed': args.global_transitional_speed,
         'takeoff_security_height': args.takeoff_security_height,
+        'drone_model': args.drone_model,
+        'gimbal_pitch': args.gimbal_pitch,
     }
 
     batch_process_inputs(

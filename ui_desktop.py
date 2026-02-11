@@ -7,6 +7,7 @@ from tkinter import ttk, filedialog, messagebox
 
 # 내부 로직 호출
 from kml_setting_v2 import batch_process_inputs
+import dji_enums
 
 BASE = Path(__file__).parent
 
@@ -230,6 +231,20 @@ class App(tk.Tk):
         add_entry(self.var_takeoff_security_height, "")
         row += 1
 
+        self.var_drone_model = tk.StringVar()
+        add_label("드론 모델")
+        # dji_enums에서 모델 목록 가져오기 (임의로 딕셔너리 키 활용) - 실제 dji_enums 구조 확인 필요
+        # 현재 dji_enums.py는 딕셔너리가 내부 변수이므로 직접 노출 안 될 수 있음. 
+        # 일단 주요 모델만 하드코딩하거나 dji_enums를 수정해서 목록을 가져오도록 함.
+        drone_list = ["mavic3e", "mavic3t", "m30", "m30t", "m300", "m350", "p4r"]
+        add_combo(self.var_drone_model, drone_list, "mavic3e")
+        row += 1
+
+        self.var_gimbal_pitch = tk.StringVar()
+        add_label("짐벌 피치 (각도)")
+        add_entry(self.var_gimbal_pitch, "-90.0")
+        row += 1
+
         self.var_simplify_tolerance = tk.StringVar()
         add_label("지오메트리 단순화(m)")
         add_entry(self.var_simplify_tolerance, "0.0")
@@ -372,6 +387,8 @@ class App(tk.Tk):
                 self.var_auto_flight_speed.set(str(data.get("auto_flight_speed", "")))
                 self.var_global_transitional_speed.set(str(data.get("global_transitional_speed", "")))
                 self.var_takeoff_security_height.set(str(data.get("takeoff_security_height", "")))
+                self.var_drone_model.set(str(data.get("drone_model", "mavic3e")))
+                self.var_gimbal_pitch.set(str(data.get("gimbal_pitch", "-90.0")))
                 if "simplify_tolerance" in data:
                     self.var_simplify_tolerance.set(str(data["simplify_tolerance"]))
             messagebox.showinfo("완료", "프리셋을 불러왔습니다.")
@@ -395,6 +412,8 @@ class App(tk.Tk):
                 "auto_flight_speed": to_int(self.var_auto_flight_speed.get()),
                 "global_transitional_speed": to_int(self.var_global_transitional_speed.get()),
                 "takeoff_security_height": to_int(self.var_takeoff_security_height.get()),
+                "drone_model": self.var_drone_model.get(),
+                "gimbal_pitch": to_float(self.var_gimbal_pitch.get()),
                 "simplify_tolerance": to_float(self.var_simplify_tolerance.get())
             }
             with open(f, 'w', encoding='utf-8') as j:
@@ -451,6 +470,8 @@ class App(tk.Tk):
                 "auto_flight_speed": to_int(self.var_auto_flight_speed.get()),
                 "global_transitional_speed": to_int(self.var_global_transitional_speed.get()),
                 "takeoff_security_height": to_int(self.var_takeoff_security_height.get()),
+                "drone_model": self.var_drone_model.get(),
+                "gimbal_pitch": to_float(self.var_gimbal_pitch.get()),
             }
 
             batch_process_inputs(
