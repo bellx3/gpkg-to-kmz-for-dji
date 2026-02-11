@@ -57,216 +57,206 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("SkyMission Builder - Desktop UI")
-        self.geometry("900x700")
+        self.geometry("980x750")
+        
+        # 스타일 설정
+        style = ttk.Style()
+        # 기본 테마가 있다면 활용 (windows는 보통 'vista' 또는 'xpnative')
+        style.configure("Accent.TButton", font=("Malgun Gothic", 10, "bold"), foreground="#0078d4")
+        
         self.queue = queue.Queue()
         self.worker = None
         self._build_ui()
         self.after(100, self._poll_queue)
 
     def _build_ui(self):
-        frm = ttk.Frame(self, padding=12)
-        frm.pack(fill=tk.BOTH, expand=True)
+        # 전체 컨테이너
+        main_frm = ttk.Frame(self, padding=12)
+        main_frm.pack(fill=tk.BOTH, expand=True)
+        
+        # 1열: 기본 설정 및 비행 제어 / 2열: 미션 파라미터 및 옵션
+        top_pane = ttk.Frame(main_frm)
+        top_pane.pack(fill=tk.X, side=tk.TOP)
+        top_pane.columnconfigure(0, weight=1)
+        top_pane.columnconfigure(1, weight=1)
 
-        # 그리드 설정
-        frm.columnconfigure(1, weight=1)
+        # ---------------------------------------------------------
+        # [왼쪽 섹션]
+        left_pane = ttk.Frame(top_pane)
+        left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        
+        # 1. 경로 및 데이터 설정
+        group_path = ttk.LabelFrame(left_pane, text=" 기본 설정 (Paths & Data) ", padding=10)
+        group_path.pack(fill=tk.X, pady=(0, 8))
+        group_path.columnconfigure(1, weight=1)
 
-        row = 0
-        def add_label(text):
-            nonlocal row
-            lbl = ttk.Label(frm, text=text)
-            lbl.grid(row=row, column=0, sticky=tk.W, pady=4)
+        l_row = 0
+        def add_item(parent, label, var, is_dir=False, is_file=False, filetypes=None, values=None, row=None):
+            nonlocal l_row
+            curr_row = row if row is not None else l_row
+            ttk.Label(parent, text=label).grid(row=curr_row, column=0, sticky=tk.W, pady=2)
+            if values:
+                cb = ttk.Combobox(parent, textvariable=var, values=values, state="readonly")
+                cb.grid(row=curr_row, column=1, sticky=tk.EW, pady=2, padx=4)
+                if not row: l_row += 1
+                return cb
+            else:
+                ent = ttk.Entry(parent, textvariable=var)
+                ent.grid(row=curr_row, column=1, sticky=tk.EW, pady=2, padx=4)
+                if is_dir:
+                    ttk.Button(parent, text="..", width=3, command=lambda: self._choose_dir(var)).grid(row=curr_row, column=2, pady=2)
+                if is_file:
+                    ttk.Button(parent, text="..", width=3, command=lambda: self._choose_file(var, filetypes)).grid(row=curr_row, column=2, pady=2)
+                if not row: l_row += 1
+                return ent
 
-        def add_entry(var, default="", width=60):
-            nonlocal row
-            var.set(default)
-            ent = ttk.Entry(frm, textvariable=var, width=width)
-            ent.grid(row=row, column=1, sticky=tk.EW, pady=4)
-            return ent
+        self.var_input_format = tk.StringVar(value="gpkg")
+        add_item(group_path, "입력 포맷", self.var_input_format, values=["gpkg", "kml", "auto"])
+        
+        self.var_input_dir = tk.StringVar(value=str(BASE.parent.parent / "input"))
+        add_item(group_path, "입력 폴더", self.var_input_dir, is_dir=True)
 
-        def add_button(text, cmd):
-            nonlocal row
-            btn = ttk.Button(frm, text=text, command=cmd)
-            btn.grid(row=row, column=2, padx=6)
-            return btn
+        self.var_out_dir = tk.StringVar(value=str(BASE.parent.parent / "output"))
+        add_item(group_path, "출력 폴더", self.var_out_dir, is_dir=True)
 
-        def add_combo(var, values, default):
-            nonlocal row
-            cb = ttk.Combobox(frm, textvariable=var, values=values, state="readonly")
-            var.set(default)
-            cb.grid(row=row, column=1, sticky=tk.W, pady=4)
-            return cb
-
-        def add_check(var, text, default=False):
-            nonlocal row
-            var.set(default)
-            chk = ttk.Checkbutton(frm, text=text, variable=var)
-            chk.grid(row=row, column=1, sticky=tk.W, pady=4)
-            return chk
-
-        # 입력 포맷
-        self.var_input_format = tk.StringVar()
-        add_label("입력 포맷")
-        add_combo(self.var_input_format, ["gpkg", "kml", "auto"], "gpkg")
-        row += 1
-
-        # 입력 폴더
-        self.var_input_dir = tk.StringVar()
-        add_label("입력 폴더 경로")
-        ent_in = add_entry(self.var_input_dir, str(BASE.parent.parent / "input"))
-        add_button("찾기", lambda: self._choose_dir(self.var_input_dir))
-        row += 1
-
-        # 템플릿 KML
-        self.var_template = tk.StringVar()
-        add_label("템플릿 KML 경로")
-        ent_tpl = add_entry(self.var_template, str(BASE.parent / "templates" / "template.kml"))
-        add_button("찾기", lambda: self._choose_file(self.var_template, filetypes=[("KML 파일", "*.kml"), ("모든 파일", "*.*")]))
-        row += 1
-
-        # waylines
-        self.var_waylines = tk.StringVar()
-        add_label("waylines.wpml 경로")
-        ent_wp = add_entry(self.var_waylines, str(BASE.parent / "templates" / "waylines.wpml"))
-        add_button("찾기", lambda: self._choose_file(self.var_waylines, filetypes=[("WPML 파일", "*.wpml"), ("모든 파일", "*.*")]))
-        row += 1
-
-        # 출력 폴더
-        self.var_out_dir = tk.StringVar()
-        add_label("출력 폴더 경로")
-        ent_out = add_entry(self.var_out_dir, str(BASE.parent.parent / "output"))
-        add_button("찾기", lambda: self._choose_dir(self.var_out_dir))
-        row += 1
-
-        # 레이어(GPKG)
         self.var_layer = tk.StringVar()
-        add_label("레이어 이름(GPKG)")
-        add_entry(self.var_layer, "")
-        row += 1
+        add_item(group_path, "레이어(GPKG)", self.var_layer)
 
-        # 파일명 필드
         self.var_naming_field = tk.StringVar()
-        add_label("파일명 필드")
-        self.cb_naming_field = ttk.Combobox(frm, textvariable=self.var_naming_field, values=[], width=60, state="readonly")
-        self.cb_naming_field.grid(row=row, column=1, sticky=tk.EW, pady=4)
-        add_button("필드 새로고침", self._refresh_naming_fields)
-        row += 1
+        ttk.Label(group_path, text="파일명 필드").grid(row=l_row, column=0, sticky=tk.W, pady=2)
+        self.cb_naming_field = ttk.Combobox(group_path, textvariable=self.var_naming_field, state="readonly")
+        self.cb_naming_field.grid(row=l_row, column=1, sticky=tk.EW, pady=2, padx=4)
+        ttk.Button(group_path, text="↻", width=3, command=self._refresh_naming_fields).grid(row=l_row, column=2, pady=2)
+        l_row += 1
 
-        # KMZ 패키징
-        self.var_pack_kmz = tk.BooleanVar()
-        add_label("KMZ로 패키징")
-        add_check(self.var_pack_kmz, "사용", True)
-        row += 1
+        # 2. 기체 및 비행 제어
+        group_flight = ttk.LabelFrame(left_pane, text=" 기체 및 비행 (Drone & Flight) ", padding=10)
+        group_flight.pack(fill=tk.X)
+        group_flight.columnconfigure(1, weight=1)
 
-        # set_times
-        self.var_set_times = tk.BooleanVar()
-        add_label("생성/업데이트 시간 갱신")
-        add_check(self.var_set_times, "사용", True)
-        row += 1
+        l_row = 0
+        self.var_drone_model = tk.StringVar(value="mavic3e")
+        drone_list = ["mavic3e", "mavic3t", "m30", "m30t", "m300", "m350", "p4r"]
+        add_item(group_flight, "드론 모델", self.var_drone_model, values=drone_list)
 
-        # set_takeoff_ref_point
-        self.var_set_takeoff_ref_point = tk.BooleanVar()
-        add_label("이륙 기준점 자동 설정")
-        add_check(self.var_set_takeoff_ref_point, "사용", False)
-        row += 1
-
-        # 프리셋 버튼
-        self.btn_load_preset = ttk.Button(frm, text="프리셋 불러오기", command=self._on_load_preset)
-        self.btn_load_preset.grid(row=row, column=1, sticky=tk.W, pady=4)
-        self.btn_save_preset = ttk.Button(frm, text="프리셋 저장하기", command=self._on_save_preset)
-        self.btn_save_preset.grid(row=row, column=2, sticky=tk.W, padx=6)
-        row += 1
-
-        # 구분선
-        ttk.Separator(frm, orient=tk.HORIZONTAL).grid(row=row, column=0, columnspan=3, sticky=tk.EW, pady=8)
-        row += 1
-
-        # Overrides
-        self.var_altitude = tk.StringVar()
-        add_label("고도(altitude)")
-        add_entry(self.var_altitude, "")
-        row += 1
-
-        self.var_shoot_height = tk.StringVar()
-        add_label("촬영고도(shoot_height)")
-        add_entry(self.var_shoot_height, "")
-        row += 1
-
-        self.var_margin = tk.StringVar()
-        add_label("마진(margin)")
-        add_entry(self.var_margin, "")
-        row += 1
-
-        self.var_overlap_camera_h = tk.StringVar()
-        add_label("카메라 중첩 H(%)")
-        add_entry(self.var_overlap_camera_h, "")
-        row += 1
-
-        self.var_overlap_camera_w = tk.StringVar()
-        add_label("카메라 중첩 W(%)")
-        add_entry(self.var_overlap_camera_w, "")
-        row += 1
-
-        self.var_overlap_lidar_h = tk.StringVar()
-        add_label("라이다 중첩 H(%)")
-        add_entry(self.var_overlap_lidar_h, "")
-        row += 1
-
-        self.var_overlap_lidar_w = tk.StringVar()
-        add_label("라이다 중첩 W(%)")
-        add_entry(self.var_overlap_lidar_w, "")
-        row += 1
+        self.var_gimbal_pitch = tk.StringVar(value="-90.0")
+        add_item(group_flight, "짐벌 피치", self.var_gimbal_pitch)
 
         self.var_auto_flight_speed = tk.StringVar()
-        add_label("자동 비행 속도")
-        add_entry(self.var_auto_flight_speed, "")
-        row += 1
+        add_item(group_flight, "비행 속도", self.var_auto_flight_speed)
 
         self.var_global_transitional_speed = tk.StringVar()
-        add_label("전환 속도")
-        add_entry(self.var_global_transitional_speed, "")
-        row += 1
+        add_item(group_flight, "전환 속도", self.var_global_transitional_speed)
 
         self.var_takeoff_security_height = tk.StringVar()
-        add_label("안전한 이륙 고도")
-        add_entry(self.var_takeoff_security_height, "")
-        row += 1
+        add_item(group_flight, "이륙 안전 고도", self.var_takeoff_security_height)
 
-        self.var_drone_model = tk.StringVar()
-        add_label("드론 모델")
-        # dji_enums에서 모델 목록 가져오기 (임의로 딕셔너리 키 활용) - 실제 dji_enums 구조 확인 필요
-        # 현재 dji_enums.py는 딕셔너리가 내부 변수이므로 직접 노출 안 될 수 있음. 
-        # 일단 주요 모델만 하드코딩하거나 dji_enums를 수정해서 목록을 가져오도록 함.
-        drone_list = ["mavic3e", "mavic3t", "m30", "m30t", "m300", "m350", "p4r"]
-        add_combo(self.var_drone_model, drone_list, "mavic3e")
-        row += 1
 
-        self.var_gimbal_pitch = tk.StringVar()
-        add_label("짐벌 피치 (각도)")
-        add_entry(self.var_gimbal_pitch, "-90.0")
-        row += 1
+        # ---------------------------------------------------------
+        # [오른쪽 섹션]
+        right_pane = ttk.Frame(top_pane)
+        right_pane.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
 
-        self.var_simplify_tolerance = tk.StringVar()
-        add_label("지오메트리 단순화(m)")
-        add_entry(self.var_simplify_tolerance, "0.0")
-        row += 1
+        # 3. 미션 파라미터
+        group_param = ttk.LabelFrame(right_pane, text=" 상세 파라미터 (Mission Specs) ", padding=10)
+        group_param.pack(fill=tk.X, pady=(0, 8))
+        group_param.columnconfigure(1, weight=1)
 
-        # 실행 버튼
-        self.btn_run = ttk.Button(frm, text="실행", command=self._on_run)
-        self.btn_run.grid(row=row, column=0, sticky=tk.W, pady=10)
+        r_row = 0
+        def add_r_item(label, var):
+            nonlocal r_row
+            ttk.Label(group_param, text=label).grid(row=r_row, column=0, sticky=tk.W, pady=2)
+            ttk.Entry(group_param, textvariable=var).grid(row=r_row, column=1, sticky=tk.EW, padx=4)
+            r_row += 1
 
-        self.btn_exit = ttk.Button(frm, text="종료", command=self.destroy)
-        self.btn_exit.grid(row=row, column=1, sticky=tk.W, pady=10)
-        row += 1
+        self.var_altitude = tk.StringVar()
+        add_r_item("임무 고도", self.var_altitude)
+        self.var_shoot_height = tk.StringVar()
+        add_r_item("촬영 고도", self.var_shoot_height)
+        self.var_margin = tk.StringVar()
+        add_r_item("마진(margin)", self.var_margin)
 
-        # 로그 창
-        self.txt_log = tk.Text(frm, height=18, wrap=tk.WORD)
-        self.txt_log.grid(row=row, column=0, columnspan=3, sticky=tk.NSEW, pady=8)
-        frm.rowconfigure(row, weight=1)
+        # 중첩도 그리드 구성
+        overlap_frm = ttk.Frame(group_param)
+        overlap_frm.grid(row=r_row, column=0, columnspan=2, fill=tk.X, pady=4)
+        r_row += 1
+        overlap_frm.columnconfigure((1, 3), weight=1)
+        
+        self.var_overlap_camera_h = tk.StringVar()
+        self.var_overlap_camera_w = tk.StringVar()
+        self.var_overlap_lidar_h = tk.StringVar()
+        self.var_overlap_lidar_w = tk.StringVar()
+        
+        ttk.Label(overlap_frm, text="카메라 H/W %:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_h, width=6).grid(row=0, column=1, sticky=tk.EW, padx=2)
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_camera_w, width=6).grid(row=0, column=2, sticky=tk.EW, padx=2)
+        
+        ttk.Label(overlap_frm, text="라이다 H/W %:").grid(row=1, column=0, sticky=tk.W, pady=(4,0))
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_h, width=6).grid(row=1, column=1, sticky=tk.EW, padx=2, pady=(4,0))
+        ttk.Entry(overlap_frm, textvariable=self.var_overlap_lidar_w, width=6).grid(row=1, column=2, sticky=tk.EW, padx=2, pady=(4,0))
+
+
+        # 4. 기타 옵션 및 최적화
+        group_opt = ttk.LabelFrame(right_pane, text=" 작업 옵션 (Options) ", padding=10)
+        group_opt.pack(fill=tk.X)
+        group_opt.columnconfigure(1, weight=1)
+
+        o_row = 0
+        self.var_simplify_tolerance = tk.StringVar(value="0.0")
+        ttk.Label(group_opt, text="단순화 오차(m)").grid(row=o_row, column=0, sticky=tk.W)
+        ttk.Entry(group_opt, textvariable=self.var_simplify_tolerance).grid(row=o_row, column=1, sticky=tk.EW, padx=4)
+        o_row += 1
+
+        self.var_pack_kmz = tk.BooleanVar(value=True)
+        self.var_set_times = tk.BooleanVar(value=True)
+        self.var_set_takeoff_ref_point = tk.BooleanVar(value=False)
+        
+        ttk.Checkbutton(group_opt, text="KMZ 패키징 사용", variable=self.var_pack_kmz).grid(row=o_row, column=0, columnspan=2, sticky=tk.W)
+        o_row += 1
+        ttk.Checkbutton(group_opt, text="생성/업데이트 시간 갱신", variable=self.var_set_times).grid(row=o_row, column=0, columnspan=2, sticky=tk.W)
+        o_row += 1
+        ttk.Checkbutton(group_opt, text="이륙 기준점 자동 설정", variable=self.var_set_takeoff_ref_point).grid(row=o_row, column=0, columnspan=2, sticky=tk.W)
+        
+        # 템플릿 파일 선택 (경로가 깊으므로 별도 배치)
+        group_tpl = ttk.LabelFrame(right_pane, text=" 템플릿 설정 ", padding=10)
+        group_tpl.pack(fill=tk.X, pady=(8, 0))
+        group_tpl.columnconfigure(1, weight=1)
+        
+        self.var_template = tk.StringVar(value=str(BASE.parent / "templates" / "template.kml"))
+        self.var_waylines = tk.StringVar(value=str(BASE.parent / "templates" / "waylines.wpml"))
+        
+        ttk.Label(group_tpl, text="KML:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Entry(group_tpl, textvariable=self.var_template).grid(row=0, column=1, sticky=tk.EW, padx=4)
+        ttk.Button(group_tpl, text="..", width=3, command=lambda: self._choose_file(self.var_template, [("KML", "*.kml")])).grid(row=0, column=2)
+        
+        ttk.Label(group_tpl, text="WPML:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(group_tpl, textvariable=self.var_waylines).grid(row=1, column=1, sticky=tk.EW, padx=4, pady=2)
+        ttk.Button(group_tpl, text="..", width=3, command=lambda: self._choose_file(self.var_waylines, [("WPML", "*.wpml")])).grid(row=1, column=2, pady=2)
+
+
+        # ---------------------------------------------------------
+        # [하단 섹션: 버튼 및 로그]
+        ctrl_pane = ttk.Frame(main_frm, padding=(0, 10))
+        ctrl_pane.pack(fill=tk.X, side=tk.TOP)
+        
+        self.btn_load_preset = ttk.Button(ctrl_pane, text="프리셋 불러오기", command=self._on_load_preset)
+        self.btn_load_preset.pack(side=tk.LEFT, padx=2)
+        self.btn_save_preset = ttk.Button(ctrl_pane, text="프리셋 저장하기", command=self._on_save_preset)
+        self.btn_save_preset.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(ctrl_pane, text="  |  ").pack(side=tk.LEFT)
+        
+        self.btn_run = ttk.Button(ctrl_pane, text="  미션 생성 실행  ", command=self._on_run, style="Accent.TButton")
+        self.btn_run.pack(side=tk.LEFT, padx=10)
+
+        # 로그 영역
+        self.txt_log = tk.Text(main_frm, height=12, wrap=tk.WORD, bg="#f8f9fa", font=("Consolas", 9))
+        self.txt_log.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # 상태바
-        row += 1
-        self.var_status = tk.StringVar(value="대기 중")
-        ttk.Label(frm, textvariable=self.var_status).grid(row=row, column=0, columnspan=3, sticky=tk.W)
+        self.var_status = tk.StringVar(value="준비됨")
+        status_bar = ttk.Label(main_frm, textvariable=self.var_status, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(fill=tk.X, side=tk.BOTTOM, ipady=2)
 
     def _refresh_naming_fields(self):
         fmt = (self.var_input_format.get() or '').strip().lower()
