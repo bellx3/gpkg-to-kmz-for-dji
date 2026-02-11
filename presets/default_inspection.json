@@ -9,5 +9,7 @@
     "auto_flight_speed": 5,
     "global_transitional_speed": 10,
     "takeoff_security_height": 30,
+    "drone_model": "mavic3e",
+    "gimbal_pitch": -90.0,
     "simplify_tolerance": 0.5
 }
