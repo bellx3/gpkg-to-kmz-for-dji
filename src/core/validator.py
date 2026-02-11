@@ -102,10 +102,10 @@ def validate_mission(config_dict: Dict) -> Dict:
     if altitude < 10:
         status = 'danger'
         messages.append("위험: 비행 고도가 너무 낮습니다 (10m 미만). 충돌 위험이 매우 높습니다.")
-    elif altitude > 120:
+    elif altitude > 150:
         if status != 'danger':
             status = 'warning'
-        messages.append("주의: 법적 허용 고도(120m)를 초과했습니다. 승인 여부를 확인하세요.")
+        messages.append("주의: 법적 허용 고도(150m)를 초과했습니다. 승인 여부를 확인하세요.")
         
     if velocity > 15:
         status = 'danger'

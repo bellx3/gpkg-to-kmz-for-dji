@@ -1,63 +1,70 @@
 {
-  "project_name": "SkyMission Builder High-level Development",
+  "goal": "UI/UX Enhancement for SkyMission Builder",
   "tasks": [
     {
-      "id": 1,
-      "title": "Develop Safety Validation Engine",
-      "description": "Implement src/core/validator.py to calculate GSD, motion blur risk, and mission time. Add validation logic to generator.py.",
-      "agent": "backend",
+      "id": "task-1",
+      "title": "UI Framework Upgrade (customtkinter)",
+      "description": "Replace standard `tk` and `ttk` widgets with `customtkinter`.",
       "priority": "P0",
-      "dependencies": []
+      "skill": "frontend-agent",
+      "dependencies": [],
+      "status": "completed"
     },
     {
-      "id": 2,
-      "title": "Integrate Safety Checks into GUI",
-      "description": "Add a 'Validate Mission' button and real-time warning indicators to src/gui/app.py based on user settings.",
-      "agent": "frontend",
-      "priority": "P0",
-      "dependencies": [
-        1
-      ]
-    },
-    {
-      "id": 3,
-      "title": "Automated Mission Reporting System",
-      "description": "Create a reporting module that generates HTML summary reports for each batch, including mission parameters and safety results.",
-      "agent": "backend",
+      "id": "task-2",
+      "title": "Layout Re-architecture (Dashboard)",
+      "description": "Refactor to Sidebar/Main/Log layout.",
       "priority": "P1",
+      "skill": "frontend-agent",
       "dependencies": [
-        1
-      ]
+        "task-1"
+      ],
+      "status": "completed"
     },
     {
-      "id": 4,
-      "title": "Integrated Map Preview (Tkinter)",
-      "description": "Integrate tkintermapview into a new tab in src/gui/app.py to visualize polygon boundaries and flight paths.",
-      "agent": "frontend",
+      "id": "task-3",
+      "title": "Visual Component Styling",
+      "description": "Style components as Cards with Dark Blue theme.",
       "priority": "P1",
-      "dependencies": []
+      "skill": "frontend-agent",
+      "dependencies": [
+        "task-1",
+        "task-2"
+      ],
+      "status": "completed"
     },
     {
-      "id": 5,
-      "title": "Selective Buffer (Margin) Implementation",
-      "description": "Add an optional buffer/margin setting to the generator core for models without native support, allowing users to expand/shrink flight areas.",
-      "agent": "backend",
+      "id": "task-4",
+      "title": "Enhanced Map & Safety Overlay",
+      "description": "Integrate Safety Status and Map Controls.",
       "priority": "P2",
-      "dependencies": []
+      "skill": "frontend-agent",
+      "dependencies": [
+        "task-3"
+      ],
+      "status": "completed"
     },
     {
-      "id": 6,
-      "title": "Comprehensive QA Review",
-      "description": "Verify calculation accuracy for blur/GSD, test report generation, and ensure UI responsiveness with the map view.",
-      "agent": "qa",
+      "id": "task-5",
+      "title": "Internationalization (i18n)",
+      "description": "Restore Korean strings and implement English/Korean language toggle.",
       "priority": "P0",
+      "skill": "frontend-agent",
       "dependencies": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ]
+        "task-4"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": "task-6",
+      "title": "Map Performance Optimization",
+      "description": "Switch default map provider to OpenStreetMap for speed. Fix input vector visualization issues by adding explicit error logging and ensuring coordinate compatibility.",
+      "priority": "P1",
+      "skill": "frontend-agent",
+      "dependencies": [
+        "task-4"
+      ],
+      "status": "completed"
     }
   ]
 }
