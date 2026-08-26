@@ -11,7 +11,13 @@
 ### 필수 라이브러리 설치
 터미널(또는 CMD)에서 아래 명령어를 입력하여 필요한 라이브러리를 설치하세요.
 ```bash
-pip install shapely geopandas fiona pyproj pyogrio
+pip install -r requirements.txt
+```
+
+지도 미리보기를 쓰시려면 하나 더 설치합니다. 설치하지 않아도 변환은 모두 동작하며,
+지도 자리에 안내 문구가 대신 표시됩니다.
+```bash
+pip install -r requirements-optional.txt
 ```
 
 ---

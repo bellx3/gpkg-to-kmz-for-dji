@@ -17,7 +17,7 @@
 - **프리셋 시스템**: 현장별 최적 설정값을 JSON 파일로 저장/로드하여 반복 작업 최소화.
 
 ## 프로젝트 구조
-- `src/core/`: 핵심 변환 및 검사 로직 (Generator, Inspector, Enums)
+- `src/core/`: 핵심 변환 및 검사 로직 (Generator, Gpkg, Validator, Reporter, Inspector, Enums)
 - `src/gui/`: SkyMission Builder 데스크톱 인터페이스 (App.py)
 - `src/templates/`: DJI WPML 표준 KML/WPML 템플릿
 - `presets/`: 사용자 정의 미션 프리셋 (JSON)
@@ -32,8 +32,17 @@
 
 ### 1단계: 필수 라이브러리 설치
 ```bash
-pip install shapely geopandas fiona pyproj pyogrio tkintermapview
+pip install -r requirements.txt
 ```
+
+지도 미리보기를 쓰려면 하나 더 설치합니다. 없어도 앱은 돌고 변환도 됩니다 —
+다만 이것 하나가 17개 패키지 43.9MB(pywin32·pillow·requests·geopy 등)를 끌고 옵니다.
+
+```bash
+pip install -r requirements-optional.txt
+```
+
+테스트를 돌리려면 `pip install -r requirements-dev.txt`.
 
 ### 2단계: 어플리케이션 실행
 프로젝트 루트 폴더에서 다음을 실행합니다.
@@ -58,3 +67,6 @@ python src/core/inspector.py [KMZ경로]
 ## 참고
 - 본 도구는 DJI WPML 1.0.6 표준을 준수합니다.
 - 한글 파일명 및 속성값을 완벽하게 지원합니다.
+- GPKG 읽기에 GeoPandas·GDAL 을 쓰지 않습니다. GeoPackage 는 SQLite 파일이라
+  표준 라이브러리 `sqlite3` 로 직접 읽습니다 — 배경과 검증 결과는
+  [의존성 다이어트](./docs/dependency-diet.md).
