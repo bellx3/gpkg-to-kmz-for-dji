@@ -94,13 +94,24 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
 - **`reporter.py`** — 배치 결과를 단일 HTML 리포트로. 템플릿이 f-string 이라 CSS 중괄호가 `{{ }}` 로 이스케이프되어 있다.
 - **`inspector.py`** — 위 참조. 라이브러리가 아니라 CLI 스크립트다.
 
-### GUI (`src/gui/app.py`, 760줄)
+### GUI (`src/gui/app.py`, 1,002줄)
 
-CustomTkinter + `tkintermapview`. 알아 둘 것 셋:
+CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-audit.md`. 알아 둘 것:
+
+- **설정 조립·프리셋 직렬화는 모듈 함수다** (`build_overrides`·`preset_from_values`·
+  `values_from_preset`·`effective_naming_field`) — Tk 없이 `tests/test_gui_logic.py` 로
+  검증된다. GUI 에 설정을 추가하면 위젯이 아니라 이 함수들과 `self._vars` 지도부터.
+- **파일명 필드의 sentinel 은 `(auto)`** — 언어 중립 값이라 토글에도 비교가 안 깨진다.
+  `(` 로 시작하는 값은 엔진에 None(파일명 자동)으로 간다.
+- **실행/프리셋 버튼은 스크롤 밖 하단 고정 바에 있다** — 카드가 길어져도 RUN 은 보인다.
+- 카드 안 스페이서 `CTkFrame` 에는 반드시 `width=1` — 기본 200 이 라벨 열을 밀어
+  입력칸을 짜부라뜨린다(실측).
+- 변수 trace 는 `__init__` 에서 한 번만 건다 — 언어 토글 재생성에서 `_bind_events` 를
+  다시 부르면 트리거가 중복된다.
 
 - **경로는 프로젝트 루트 기준으로 유도된다** — `BASE.parent.parent / "input"`. `src/gui/` 에서 두 단계 올라간다. 파일을 옮기면 기본 경로가 조용히 어긋난다.
-- **배치는 스레드로 돌고 로그는 큐로 온다** — `LogRedirector` 가 `sys.stdout` 을 가로채 큐에 넣고 UI 가 폴링한다. core 쪽에서 `print()` 한 것이 그대로 로그창에 뜬다.
-- **언어 토글은 UI 를 통째로 다시 만든다**(`_toggle_language` → `_rebuild_full_ui`). 위젯 상태를 들고 있는 코드를 추가할 때 재생성에서 살아남는지 확인할 것.
+- **배치는 스레드로 돌고 로그는 큐로 온다** — `LogRedirector` 가 `sys.stdout`/`sys.stderr` 를 가로채 큐에 넣고 UI 가 폴링한다. core 쪽 `print()` 와 traceback 이 그대로 로그창에 뜬다. tk 변수는 메인 스레드에서 `_collect_values()` 로 모아 워커에 딕셔너리로 넘긴다.
+- **언어 토글은 UI 를 통째로 다시 만든다**(`_toggle_language` → `_rebuild_full_ui`). 위젯 상태를 들고 있는 코드를 추가할 때 재생성에서 살아남는지 확인할 것 — 살아남아야 하는 상태(로그 내용·파일명 후보·지도 스타일·실행 버튼 상태)는 위젯 밖 속성에 두고, `tests/test_gui_smoke.py` 가 왕복을 검사한다.
 
 ## 파일 규약
 
