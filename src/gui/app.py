@@ -33,9 +33,6 @@ BASE = Path(__file__).parent
 # 유틸 변환 함수
 # ------------------------------------------------------------------------------
 
-def to_bool(v: str) -> bool:
-    return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
-
 def to_float(v: str):
     if v is None: return None
     s = str(v).strip()

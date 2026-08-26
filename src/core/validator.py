@@ -3,8 +3,7 @@ SkyMission Builder - Safety Validation Module
 고도, 카메라 사양, 비행 속도 등에 기반한 미션 안전 및 품질 검증 로직을 제공합니다.
 """
 
-from typing import Dict, List, Optional, Tuple
-import math
+from typing import Dict
 
 # 주요 카메라 센서 사양 데이터 (GSD 및 블러 계산용)
 # sensor_width(mm), sensor_height(mm), image_width(px), image_height(px), focal_length(mm)
@@ -124,15 +123,3 @@ def validate_mission(config_dict: Dict) -> Dict:
             'shutter': f"1/{int(1/shutter)}"
         }
     }
-
-def estimate_mission_time(total_distance_m: float, velocity_ms: float) -> str:
-    """단순 거리 기반 비행 시간 추정 (분:초)"""
-    if velocity_ms <= 0:
-        return "N/A"
-    
-    # 가감속 및 턴 시간을 고려하여 15% 여유 가산
-    seconds = (total_distance_m / velocity_ms) * 1.15
-    minutes = int(seconds // 60)
-    remain_seconds = int(seconds % 60)
-    
-    return f"{minutes:02d}:{remain_seconds:02d}"

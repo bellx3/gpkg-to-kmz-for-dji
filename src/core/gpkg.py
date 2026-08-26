@@ -11,7 +11,6 @@ flags 비트 — 0: 헤더 바이트순서, 1..3: 엔벨로프 종류, 4: 빈 �
 교체 전 대조 결과는 `docs/dependency-diet.md`.
 """
 import sqlite3
-import struct
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional
 
@@ -38,7 +37,6 @@ def _decode_geometry(blob: bytes):
     if not blob or len(blob) < 8 or blob[0:2] != b'GP':
         raise ValueError('GPKG 지오메트리 BLOB 이 아닙니다.')
     flags = blob[3]
-    endian = '<' if flags & 0x01 else '>'
     env_kind = (flags >> 1) & 0x07
     env_size = _ENVELOPE_SIZE.get(env_kind)
     if env_size is None:
@@ -55,11 +53,20 @@ def _connect(path: Path) -> sqlite3.Connection:
     return con
 
 
+_FEATURE_LAYERS = ("SELECT table_name FROM gpkg_contents "
+                   "WHERE data_type='features' ORDER BY table_name")
+
+
+def _default_layer(cur) -> Optional[str]:
+    """레이어를 지정하지 않았을 때 쓸 첫 피처 레이어. 하나도 없으면 None."""
+    row = cur.execute(_FEATURE_LAYERS + ' LIMIT 1').fetchone()
+    return row[0] if row else None
+
+
 def list_layers(path: Path) -> List[str]:
     con = _connect(path)
     try:
-        return [r[0] for r in con.execute(
-            "SELECT table_name FROM gpkg_contents WHERE data_type='features' ORDER BY table_name")]
+        return [r[0] for r in con.execute(_FEATURE_LAYERS)]
     finally:
         con.close()
 
@@ -70,13 +77,9 @@ def read_layer(path: Path, layer: Optional[str] = None) -> Layer:
     con = _connect(path)
     try:
         cur = con.cursor()
+        layer = layer or _default_layer(cur)
         if layer is None:
-            row = cur.execute(
-                "SELECT table_name FROM gpkg_contents WHERE data_type='features' "
-                "ORDER BY table_name LIMIT 1").fetchone()
-            if not row:
-                raise ValueError(f'피처 레이어가 없습니다: {path.name}')
-            layer = row[0]
+            raise ValueError(f'피처 레이어가 없습니다: {path.name}')
 
         gc = cur.execute(
             'SELECT column_name, srs_id FROM gpkg_geometry_columns WHERE table_name=?',
@@ -117,13 +120,9 @@ def field_names(path: Path, layer: Optional[str] = None) -> List[str]:
     con = _connect(path)
     try:
         cur = con.cursor()
+        layer = layer or _default_layer(cur)
         if layer is None:
-            row = cur.execute(
-                "SELECT table_name FROM gpkg_contents WHERE data_type='features' "
-                "ORDER BY table_name LIMIT 1").fetchone()
-            if not row:
-                return []
-            layer = row[0]
+            return []
         gc = cur.execute(
             'SELECT column_name FROM gpkg_geometry_columns WHERE table_name=?', (layer,)).fetchone()
         geom_col = gc[0] if gc else None

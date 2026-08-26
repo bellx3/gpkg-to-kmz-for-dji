@@ -181,19 +181,6 @@ def polygon_coords_from_geoms(geoms, src_epsg: Optional[int], to_epsg: int = 432
     return lonlat
 
 
-def parse_polygon_coords_from_gpkg(src_gpkg_path: Path, layer: Optional[str] = None,
-                                   to_epsg: int = 4326,
-                                   simplify_tolerance: float = 0.0,
-                                   geometry_buffer_m: float = 0.0):
-    """GPKG 파일 하나의 폴리곤 전체를 병합한 좌표 리스트와 레이어를 돌려준다."""
-    lyr = read_gpkg_layer(src_gpkg_path, layer=layer)
-    coords = polygon_coords_from_geoms([f.geom for f in lyr.features], lyr.epsg,
-                                       to_epsg=to_epsg,
-                                       simplify_tolerance=simplify_tolerance,
-                                       geometry_buffer_m=geometry_buffer_m)
-    return coords, lyr
-
-
 # -----------------------------
 # 템플릿 오버라이드
 # -----------------------------
@@ -273,6 +260,22 @@ def apply_template_overrides(root: ET.Element, overrides: Optional[Dict] = None)
 def inject_coords_to_template(template_kml_path: Path, lonlat: List[Tuple[str, str]], out_kml_path: Path,
                               set_times: bool = False, set_takeoff_ref_point: bool = False,
                               overrides: Optional[Dict] = None):
+    """같은 KML 을 파일로 쓴다(개행은 CRLF — _build_kml_tree 주석 참조)."""
+    tree = _build_kml_tree(template_kml_path, lonlat, set_times=set_times,
+                           set_takeoff_ref_point=set_takeoff_ref_point, overrides=overrides)
+    tree.write(out_kml_path, encoding='UTF-8', xml_declaration=True)
+
+
+def _build_kml_tree(template_kml_path: Path, lonlat: List[Tuple[str, str]],
+                    set_times: bool = False, set_takeoff_ref_point: bool = False,
+                    overrides: Optional[Dict] = None) -> ET.ElementTree:
+    """템플릿에 좌표·시각·이륙기준점·오버라이드를 주입한 트리를 돌려준다.
+
+    generate_kml_bytes 와 inject_coords_to_template 가 이 하나를 공유한다. 다만 두
+    함수의 **출력 바이트는 서로 다르고, 그대로 둔다** — ET 는 파일 경로를 받으면
+    텍스트 모드로 열어 Windows 에서 개행을 CRLF 로 바꾸고, tostring 은 LF 그대로다.
+    기체에 들어가는 KMZ 안의 KML 은 tostring 쪽(LF)이다.
+    """
     tree = ET.parse(template_kml_path)
     root = tree.getroot()
     coords_elem = root.find('.//kml:Folder/kml:Placemark/kml:Polygon/kml:outerBoundaryIs/kml:LinearRing/kml:coordinates', NS)
@@ -313,61 +316,18 @@ def inject_coords_to_template(template_kml_path: Path, lonlat: List[Tuple[str, s
     # 템플릿 파라미터 오버라이드 적용
     apply_template_overrides(root, overrides)
 
-    tree.write(out_kml_path, encoding='UTF-8', xml_declaration=True)
+    return tree
 
 
 def generate_kml_bytes(template_kml_path: Path, lonlat: List[Tuple[str, str]],
                        set_times: bool = False, set_takeoff_ref_point: bool = False,
                        overrides: Optional[Dict] = None) -> bytes:
-    tree = ET.parse(template_kml_path)
-    root = tree.getroot()
-    coords_elem = root.find('.//kml:Folder/kml:Placemark/kml:Polygon/kml:outerBoundaryIs/kml:LinearRing/kml:coordinates', NS)
-    if coords_elem is None:
-        coords_elem = root.find('.//kml:coordinates', NS)
-    if coords_elem is None:
-        raise ValueError('템플릿에서 <coordinates>를 찾지 못했습니다.')
-
-    # 템플릿 형태 유지(들여쓰기 포함)
-    indent = '\n                '
-    coords_text = indent + indent.join([f'{lon},{lat},0' for lon, lat in lonlat]) + indent
-    coords_elem.text = coords_text
-
-    # 생성/업데이트 시간 갱신 (밀리초 epoch)
-    if set_times:
-        now_ms = str(int(time.time() * 1000))
-        create_elem = root.find('.//wpml:createTime', NS)
-        update_elem = root.find('.//wpml:updateTime', NS)
-        if create_elem is not None:
-            create_elem.text = now_ms
-        if update_elem is not None:
-            update_elem.text = now_ms
-
-    # 이륙 기준점 자동 설정(폴리곤 중심값)
-    if set_takeoff_ref_point:
-        try:
-            lons = [float(lon) for lon, _ in lonlat]
-            lats = [float(lat) for _, lat in lonlat]
-            if lons and lats:
-                centroid_lat = sum(lats) / len(lats)
-                centroid_lon = sum(lons) / len(lons)
-                tk_elem = root.find('.//wpml:takeOffRefPoint', NS)
-                if tk_elem is not None:
-                    tk_elem.text = f'{centroid_lat:.6f},{centroid_lon:.6f},0.000000'
-        except Exception:
-            pass
-
-    # 템플릿 파라미터 오버라이드 적용
-    apply_template_overrides(root, overrides)
-
-    # 전체 KML XML을 바이트로 반환하여 디스크에 저장하지 않고 KMZ에 바로 포함 가능하도록 함
-    return ET.tostring(root, encoding='UTF-8', xml_declaration=True)
+    """디스크를 거치지 않고 KMZ 에 바로 넣을 수 있도록 KML 을 바이트로 돌려준다."""
+    tree = _build_kml_tree(template_kml_path, lonlat, set_times=set_times,
+                           set_takeoff_ref_point=set_takeoff_ref_point, overrides=overrides)
+    return ET.tostring(tree.getroot(), encoding='UTF-8', xml_declaration=True)
 
 
-def make_kmz(kml_path: Path, wpml_path: Path, kmz_path: Path, arcname_kml: str = 'template.kml', arcname_wpml: str = 'waylines.wpml'):
-    with ZipFile(kmz_path, 'w', compression=ZIP_DEFLATED) as z:
-        # 루트에 정확한 파일명으로 저장되도록 arcname 지정
-        z.write(kml_path, arcname=arcname_kml)
-        z.write(wpml_path, arcname=arcname_wpml)
 
 
 def make_kmz_from_bytes(kml_bytes: bytes, wpml_path: Path, kmz_path: Path, arcname_kml: str = 'template.kml', arcname_wpml: str = 'waylines.wpml', overrides: Optional[Dict] = None):

@@ -115,6 +115,31 @@ numpy 는 shapely 가 요구하므로 shapely 를 남기는 한 함께 남는다
 - 새 테스트가 실제로 고장을 잡는지 돌연변이 셋으로 확인했다(엔벨로프 크기 0 고정,
   빈 지오메트리 플래그 무시, 기본키 필터 제거 → 각각 4·1·1건 실패).
 
+## 죽은 코드 정리 (같은 날 2차)
+
+의존성을 걷어낸 뒤 모듈 내부를 훑어 아래를 지웠다. 산출물은 그대로다(양쪽 골든 재확인).
+
+- `generator.py` — `make_kmz`(호출 0), `parse_polygon_coords_from_gpkg`(호출 0)
+- `validator.py` — `estimate_mission_time`(호출 0), 안 쓰는 임포트 4개(`List`·`Optional`·`Tuple`·`math`)
+- `gui/app.py` — `to_bool`(호출 0)
+- `core/gpkg.py` — `import struct` 와 죽은 지역변수 `endian`. srs_id 를 BLOB 대신
+  `gpkg_geometry_columns` 에서 읽도록 바꾸면서 남은 흔적이다.
+
+`inject_coords_to_template` 과 `generate_kml_bytes` 는 **90% 같은 코드**였다(차이는
+마지막 한 줄). 공통부를 `_build_kml_tree` 로 뽑았다.
+
+### 지우면 안 되는 것 둘 — 검출기가 죽었다고 말한다
+
+- **`LogRedirector.flush`** — 참조 0건이지만 `sys.stdout` 대체물이라 파일 프로토콜상
+  필요하다. 파이썬이 부른다. 린터가 앞으로도 계속 지적할 것이다.
+- **`inject_coords_to_template` 과 `generate_kml_bytes` 의 출력 바이트가 다르다.**
+  ET 는 파일 경로를 받으면 텍스트 모드로 열어 Windows 에서 개행을 CRLF 로 바꾸고,
+  `tostring` 은 LF 그대로다. 하나로 합치면 `.kml` 산출물이 86바이트 짧아진다.
+  둘을 그대로 두고 트리 만드는 부분만 공유하게 했다.
+
+  이것을 `BytesIO` 로 시험해서 "동일" 이라고 읽을 뻔했다 — `tree.write(버퍼)` 는
+  이진이라 LF 가 나온다. 대상은 파일 경로였다.
+
 ## 손대지 않은 것
 
 - **`waylines.wpml` 이 모든 임무에서 동일하다.** 골든을 뜨면서 확인했다 — 좌표는
