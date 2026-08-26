@@ -4,7 +4,12 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import time
 import re
 from typing import List, Tuple, Optional, Dict
+
+from pyproj import CRS, Transformer
+from shapely.ops import transform as shapely_transform, unary_union
+
 from . import enums as dji_enums
+from . import gpkg
 from . import validator
 from . import reporter
 
@@ -116,61 +121,39 @@ def parse_name_value_from_kml(src_kml_path: Path, naming_field: Optional[str] = 
 
 
 # -----------------------------
-# GPKG 파싱 (GeoPandas/pyogrio 권장)
+# GPKG 파싱 (sqlite3 직접 — docs/dependency-diet.md)
 # -----------------------------
-def read_gpkg_to_gdf(src_gpkg_path: Path, layer: Optional[str] = None):
-    try:
-        import geopandas as gpd
-    except ImportError:
-        raise ImportError("GeoPackage 파싱을 위해 GeoPandas가 필요합니다. 'pip install geopandas pyogrio shapely' 설치 후 다시 시도하세요.")
-
-    gdf = None
-    read_err = None
-    try:
-        gdf = gpd.read_file(str(src_gpkg_path), layer=layer)
-    except Exception as e:
-        read_err = e
-        try:
-            import pyogrio
-            gdf = pyogrio.read_dataframe(str(src_gpkg_path), layer=layer)
-        except Exception as e2:
-            raise RuntimeError(f"GPKG 읽기 실패: {read_err} / pyogrio 실패: {e2}")
-    
-    if gdf is None or gdf.empty:
+def read_gpkg_layer(src_gpkg_path: Path, layer: Optional[str] = None) -> gpkg.Layer:
+    lyr = gpkg.read_layer(src_gpkg_path, layer=layer)
+    if not lyr.features:
         raise ValueError('GPKG 레이어가 비어 있거나 읽을 수 없습니다.')
-    return gdf
+    return lyr
 
 
-def parse_polygon_coords_from_gpkg(src_gpkg_path: Path, layer: Optional[str] = None,
-                                   to_epsg: int = 4326,
-                                   simplify_tolerance: float = 0.0,
-                                   geometry_buffer_m: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
+def polygon_features(features: List[gpkg.Feature]) -> List[Tuple[int, gpkg.Feature]]:
+    """폴리곤 계열만 (원본 인덱스, 피처) 쌍으로 남긴다. 점·선은 임무가 될 수 없다.
+
+    인덱스는 **필터 전** 기준이다 — 명명 필드가 없을 때 파일명의 꼬리로 쓰이므로
+    걸러낸 뒤 다시 번호를 매기면 산출물 이름이 달라진다.
     """
-    GPKG 파일을 읽어 WGS84 좌표 리스트를 반환하는 래퍼 함수.
-    """
-    gdf = read_gpkg_to_gdf(src_gpkg_path, layer=layer)
-    return parse_polygon_coords_from_gpkg_direct(gdf, to_epsg=to_epsg, simplify_tolerance=simplify_tolerance, geometry_buffer_m=geometry_buffer_m)
+    return [(i, f) for i, f in enumerate(features)
+            if f.geom is not None and f.geom.geom_type in ('Polygon', 'MultiPolygon')]
 
 
-def parse_polygon_coords_from_gpkg_direct(gdf, to_epsg: int = 4326,
-                                          simplify_tolerance: float = 0.0,
-                                          geometry_buffer_m: float = 0.0) -> Tuple[List[Tuple[str, str]], 'object']:
+def polygon_coords_from_geoms(geoms, src_epsg: Optional[int], to_epsg: int = 4326,
+                              simplify_tolerance: float = 0.0,
+                              geometry_buffer_m: float = 0.0) -> List[Tuple[str, str]]:
+    """지오메트리들을 병합·버퍼·단순화한 뒤 WGS84 좌표 리스트로 만든다.
+
+    버퍼와 단순화는 **재투영 전에**, 원본 좌표계에서 한다. 원본이 지리 좌표계(도 단위)면
+    미터를 도로 근사 환산한다(÷111111) — 투영 좌표계면 이미 미터라 그대로 쓴다.
     """
-    이미 로드된 GeoDataFrame에서 폴리곤을 추출하고 변환/단순화 수행.
-    """
-    # 1. 폴리곤 계열 선택 및 병합
-    geom_type = gdf.geometry.geom_type
-    gdf = gdf[geom_type.isin(['Polygon', 'MultiPolygon'])].copy()
-    if gdf.empty:
+    polys = [g for g in geoms
+             if g is not None and g.geom_type in ('Polygon', 'MultiPolygon')]
+    if not polys:
         raise ValueError('폴리곤/멀티폴리곤 지오메트리가 없습니다.')
 
-    try:
-        from shapely.ops import unary_union as sh_unary_union
-        u = sh_unary_union(gdf.geometry)
-    except Exception:
-        u = gdf.geometry.unary_union
-
-    from shapely.geometry import Polygon, MultiPolygon
+    u = unary_union(polys)
     if u.geom_type == 'MultiPolygon':
         poly = max(u.geoms, key=lambda p: p.area)
     elif u.geom_type == 'Polygon':
@@ -178,49 +161,37 @@ def parse_polygon_coords_from_gpkg_direct(gdf, to_epsg: int = 4326,
     else:
         raise ValueError(f'지원하지 않는 지오메트리 타입: {u.geom_type}')
 
-    # 2. 지오메트리 버퍼 (Buffer)
+    src_crs = CRS.from_epsg(src_epsg) if src_epsg else None
+    is_geographic = bool(src_crs and src_crs.is_geographic)
+
     if geometry_buffer_m != 0:
-        actual_buf = geometry_buffer_m
-        # 만약 지리 좌표계(도 단위)라면 미터 단위를 도 단위로 대략적 변환
-        if gdf.crs and gdf.crs.is_geographic:
-            actual_buf = geometry_buffer_m / 111111.0
-        poly = poly.buffer(actual_buf)
-
-    # 3. 지오메트리 단순화 (Simplify)
+        poly = poly.buffer(geometry_buffer_m / 111111.0 if is_geographic else geometry_buffer_m)
     if simplify_tolerance > 0:
-        actual_tol = simplify_tolerance
-        # 만약 지리 좌표계(도 단위)라면 미터 단위 오차를 도 단위로 대략적 변환
-        if gdf.crs and gdf.crs.is_geographic:
-            actual_tol = simplify_tolerance / 111111.0
-        poly = poly.simplify(actual_tol, preserve_topology=True)
+        tol = simplify_tolerance / 111111.0 if is_geographic else simplify_tolerance
+        poly = poly.simplify(tol, preserve_topology=True)
 
-    # 4. 좌표계 변환 (WGS84로 변환하기 위해 임시 GeoSeries 사용)
-    import geopandas as gpd
-    from shapely.geometry import mapping, shape
-    gs = gpd.GeoSeries([poly], crs=gdf.crs)
-    if gdf.crs and gdf.crs.to_epsg() != to_epsg:
-        gs = gs.to_crs(epsg=to_epsg)
-    
-    final_poly = gs.iloc[0]
-    coords = list(final_poly.exterior.coords)
-    lonlat = [(f"{x:.9f}", f"{y:.9f}") for (x, y) in coords]
-    
+    if src_crs and src_epsg != to_epsg:
+        tf = Transformer.from_crs(src_crs, CRS.from_epsg(to_epsg), always_xy=True)
+        poly = shapely_transform(lambda x, y, z=None: tf.transform(x, y), poly)
+
+    lonlat = [(f'{x:.9f}', f'{y:.9f}') for x, y in poly.exterior.coords]
     # 폴리곤 폐합 보장
     if lonlat[0] != lonlat[-1]:
         lonlat.append(lonlat[0])
-        
-    return lonlat, gdf
+    return lonlat
 
 
-def get_naming_value_from_gdf(gdf, naming_field: Optional[str], fallback_stem: str) -> str:
-    if naming_field and naming_field in gdf.columns:
-        series = gdf[naming_field].dropna()
-        if len(series) > 0:
-            val = str(series.iloc[0])
-            sanitized = sanitize_filename(val)
-            if sanitized:
-                return sanitized
-    return fallback_stem
+def parse_polygon_coords_from_gpkg(src_gpkg_path: Path, layer: Optional[str] = None,
+                                   to_epsg: int = 4326,
+                                   simplify_tolerance: float = 0.0,
+                                   geometry_buffer_m: float = 0.0):
+    """GPKG 파일 하나의 폴리곤 전체를 병합한 좌표 리스트와 레이어를 돌려준다."""
+    lyr = read_gpkg_layer(src_gpkg_path, layer=layer)
+    coords = polygon_coords_from_geoms([f.geom for f in lyr.features], lyr.epsg,
+                                       to_epsg=to_epsg,
+                                       simplify_tolerance=simplify_tolerance,
+                                       geometry_buffer_m=geometry_buffer_m)
+    return coords, lyr
 
 
 # -----------------------------
@@ -507,33 +478,28 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
     def process_one(file_path: Path, is_gpkg: bool):
         try:
             if is_gpkg:
-                # GPKG는 내부 피처별로 분할 처리 시도
-                gdf_all = read_gpkg_to_gdf(file_path, layer=layer)
-                # 폴리곤 계열만
-                gdf_poly = gdf_all[gdf_all.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])].copy()
-                if gdf_poly.empty:
+                # GPKG는 내부 피처별로 분할 처리 — 폴리곤 하나당 KMZ 하나
+                lyr = read_gpkg_layer(file_path, layer=layer)
+                feats = polygon_features(lyr.features)
+                if not feats:
                     print(f'건너뜀(폴리곤 없음): {file_path.name}')
                     return False
-                
-                for idx, row in gdf_poly.iterrows():
-                    # 개별 피처 처리
-                    import geopandas as gpd
-                    single_gdf = gpd.GeoDataFrame([row], crs=gdf_all.crs)
-                    
-                    geo_buf = overrides.get('geometry_buffer_m', 0.0) if overrides else 0.0
-                    lonlat, _ = parse_polygon_coords_from_gpkg_direct(
-                        single_gdf, to_epsg=4326, 
+
+                geo_buf = overrides.get('geometry_buffer_m', 0.0) if overrides else 0.0
+                for idx, feat in feats:
+                    lonlat = polygon_coords_from_geoms(
+                        [feat.geom], lyr.epsg, to_epsg=4326,
                         simplify_tolerance=simplify_tolerance,
                         geometry_buffer_m=geo_buf
                     )
-                    
+
                     # 명명 필드 처리
-                    dynm = fallback_name = f"{file_path.stem}_{idx}"
-                    if naming_field and naming_field in row:
-                        val = str(row[naming_field]).strip()
+                    dynm = f"{file_path.stem}_{idx}"
+                    if naming_field and naming_field in feat.attrs:
+                        val = str(feat.attrs[naming_field]).strip()
                         if val and val.lower() != 'none':
                             dynm = sanitize_filename(val)
-                    
+
                     save_result(lonlat, dynm, file_path.name)
             else:
                 # KML은 기존대로 단일 파일 처리

@@ -38,11 +38,22 @@ def test_validate_mission_danger_blur():
     assert any("모션 블러" in m for m in result['messages'])
 
 def test_validate_mission_altitude_warning():
+    # Korean legal ceiling is 150m, and the check is strictly greater-than.
+    config = {
+        'drone_model': 'mavic3e',
+        'altitude': 151,
+        'auto_flight_speed': 5
+    }
+    result = validate_mission(config)
+    assert result['status'] == 'warning'
+    assert any("고도(150m)를 초과" in m for m in result['messages'])
+
+
+def test_validate_mission_altitude_at_limit_is_safe():
+    # 150 exactly is allowed - guards the boundary the previous test got wrong.
     config = {
         'drone_model': 'mavic3e',
         'altitude': 150,
         'auto_flight_speed': 5
     }
-    result = validate_mission(config)
-    assert result['status'] == 'warning'
-    assert any("고도(120m)를 초과" in m for m in result['messages'])
+    assert validate_mission(config)['status'] == 'safe'

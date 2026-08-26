@@ -17,8 +17,10 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk  # NEW: CustomTkinter
 # 내부 로직 호출
-from src.core.generator import batch_process_inputs, validate_mission_config, parse_polygon_coords_from_kml, parse_polygon_coords_from_gpkg, read_gpkg_to_gdf, parse_polygon_coords_from_gpkg_direct
-from src.core import enums
+from src.core.generator import (batch_process_inputs, validate_mission_config,
+                                parse_polygon_coords_from_kml, read_gpkg_layer,
+                                polygon_coords_from_geoms)
+from src.core import enums, gpkg
 
 try:
     import tkintermapview
@@ -509,8 +511,10 @@ class App(ctk.CTk):
             try:
                 coords = []
                 if f.suffix.lower() == '.gpkg':
-                    gdf = read_gpkg_to_gdf(f)
-                    lonlat, _ = parse_polygon_coords_from_gpkg_direct(gdf, geometry_buffer_m=to_float(self.var_geometry_buffer.get()) or 0.0)
+                    lyr = read_gpkg_layer(f)
+                    lonlat = polygon_coords_from_geoms(
+                        [ft.geom for ft in lyr.features], lyr.epsg,
+                        geometry_buffer_m=to_float(self.var_geometry_buffer.get()) or 0.0)
                     coords = [(float(lat), float(lon)) for lon, lat in lonlat]
                 elif f.suffix.lower() == '.kmz':
                     # Simplified logic for KMZ preview
@@ -617,30 +621,19 @@ class App(ctk.CTk):
              messagebox.showinfo("Done", f"Loaded {len(candidates)} fields.")
 
     def _get_gpkg_fields(self, input_dir: Path, layer: str | None) -> list[str]:
-        try:
-            import geopandas as gpd
-        except ImportError:
-            messagebox.showerror("Error", "GeoPandas required for GPKG scanning.\npip install geopandas pyogrio shapely")
-            return []
-
         files = list(input_dir.glob('*.gpkg'))
         if not files: return []
 
         intersection = None
         union = set()
-        count = 0
-        for p in files:
-            if count >= 10: break
-            count += 1
+        for p in files[:10]:
             try:
-                gdf = gpd.read_file(p, layer=layer) if layer else gpd.read_file(p)
-                cols = [c for c in gdf.columns if c.lower() != 'geometry']
-                s = set(cols)
-                union.update(s)
-                intersection = s if intersection is None else intersection.intersection(s)
+                cols = set(gpkg.field_names(p, layer=layer))
+                union.update(cols)
+                intersection = cols if intersection is None else intersection.intersection(cols)
             except Exception: pass
-        
-        return sorted(intersection) if intersection and len(intersection) > 0 else sorted(union)
+
+        return sorted(intersection) if intersection else sorted(union)
 
     def _get_kml_fields(self, input_dir: Path) -> list[str]:
         files = list(input_dir.glob('*.kml'))
