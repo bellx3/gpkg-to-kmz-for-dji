@@ -40,7 +40,11 @@ python src/core/inspector.py output/어떤미션.kmz
 
 린터·포매터 설정은 없다.
 
-테스트는 23개 전부 통과한다. (2026-08 이전에는 8개 중 1개가 실패했다 —
+테스트는 33개 전부 통과한다. `tests/test_convert.py` 는 GPKG 하나가 KMZ 가 되기까지의
+**전체 경로**를 본다 — 단위 테스트는 함수의 정확성을 보증해도 그 함수가 불린다는 것은
+보증하지 않는다. 특히 KML/WPML 이 같은 설정에 대해 같은 값을 갖는지를 검사한다.
+(고도는 예외다: `waylineCoordinateSysParam` 은 WPML 1.0.6 에서 `template.kml` 전용이라
+`waylines.wpml` 에는 없고, WPML 쪽 고도는 웨이포인트마다 `executeHeight` 로 들어간다.) (2026-08 이전에는 8개 중 1개가 실패했다 —
 `test_validate_mission_altitude_warning` 이 미국·유럽 기준인 120m 를 기대하고 있었다.
 코드가 쓰는 한국 법정 한도 `> 150m` 가 맞아서 테스트 쪽을 고쳤고, 경계값 150 이
 `safe` 임을 못박는 테스트를 함께 넣었다.)

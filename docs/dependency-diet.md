@@ -140,6 +140,40 @@ numpy 는 shapely 가 요구하므로 shapely 를 남기는 한 함께 남는다
   이것을 `BytesIO` 로 시험해서 "동일" 이라고 읽을 뻔했다 — `tree.write(버퍼)` 는
   이진이라 LF 가 나온다. 대상은 파일 경로였다.
 
+## end-to-end 테스트 (3차)
+
+이번 작업을 증명한 골든 하네스는 임시 폴더에 있어 사라진다. 그런데 테스트 23개 중
+**변환 전체 경로를 보는 것이 하나도 없었다** — validator·reporter·buffer·gpkg 단위
+테스트뿐이라, 방금 갈아엎은 바로 그 길에 그물이 없었다.
+
+`tests/test_convert.py` 가 `batch_process_inputs` 만 부르고 나온 KMZ 를 뜯어본다.
+골든 해시를 저장하지 않는다 — 템플릿이 정당하게 바뀌면 깨지기만 하고 아무것도
+못 잡는다. 대신 의미를 본다: 폴리곤 하나당 KMZ 하나인지, 점형이 걸러지는지,
+KMZ 루트에 `template.kml` 과 `waylines.wpml` 만 있는지, `ns0:` 접두사가 없는지,
+좌표가 WGS84 로 제 위치인지, 오버라이드가 KML/WPML **양쪽**에 같은 값으로 닿는지.
+
+### 그러다 알게 된 것
+
+`load_wpml_bytes_with_overrides` 는 WPML 에도 `globalShootHeight` 와
+`surfaceRelativeHeight` 를 넣으려 한다. **그 마디가 waylines.wpml 에 없다** —
+`waylineCoordinateSysParam` 은 WPML 1.0.6 에서 `template.kml` 전용이다.
+`set_text` 가 없는 마디를 조용히 넘기므로 두 줄은 아무 일도 하지 않는다.
+
+지우지 않았다. 사용자가 자기 `waylines.wpml` 을 넘길 수 있고(`batch_process_inputs`
+의 인자다) 그 파일에 그 마디가 있으면 동작한다. 대신 이 사실을
+`test_shoot_height_is_kml_only` 로 못박아, 다음 세션이 "WPML 에 고도가 안 들어간다"
+를 결함으로 오해하지 않게 했다. WPML 쪽 고도는 웨이포인트마다 `executeHeight` 다.
+
+### 돌연변이 확인
+
+테스트가 실제로 무언가를 잡는지 다섯 가지로 깨뜨려 봤다 — 네임스페이스 등록 제거,
+KMZ 내부 파일명 변경, WPML 속도 주입 제거, 재투영 건너뛰기, 폴리곤 필터 무력화.
+다섯 다 잡힌다.
+
+처음에 KMZ 파일명은 안 잡히는 것처럼 보였는데, 함수의 **기본 인자**를 바꿨기 때문이었다
+— 호출부가 `arcname_kml='template.kml'` 을 명시하고 있어 돌연변이 자체가 무효였다.
+테스트의 구멍이 아니라 검증 방법의 오류였다.
+
 ## 손대지 않은 것
 
 - **`waylines.wpml` 이 모든 임무에서 동일하다.** 골든을 뜨면서 확인했다 — 좌표는
