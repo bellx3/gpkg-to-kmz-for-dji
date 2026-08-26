@@ -1,0 +1,9 @@
+# SkyMission Builder — 필수 의존성
+#
+# GPKG 읽기는 표준 라이브러리 sqlite3 가 한다. GeoPandas·fiona·pyogrio 는 쓰지 않는다
+# (배경과 검증 결과는 docs/dependency-diet.md). 되돌리지 말 것 — 258MB 를 여섯 가지
+# 호출에 쓰던 것을 걷어낸 자리다.
+
+shapely>=2.0        # 버퍼·단순화·병합·WKB 파싱
+pyproj>=3.5         # 좌표계 변환 (EPSG:5174/5186 등 -> WGS84)
+customtkinter>=5.2  # GUI. README 의 pip 줄에서 오래 빠져 있던 항목이다

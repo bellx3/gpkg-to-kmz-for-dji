@@ -1,0 +1,9 @@
+# 선택 — 지도 미리보기
+#
+# 변환된 폴리곤이 제 위치에 떨어졌는지 눈으로 보는 패널. 없어도 앱은 돌고 변환도 된다
+# (src/gui/app.py 가 try/except 로 감싸 두었고, 없으면 그 자리에 안내 문구가 뜬다).
+#
+# 다만 이것 하나가 17개 패키지 43.9MB 를 끌고 온다
+# (pywin32 · pillow · requests · geopy · geocoder …). 필요 없으면 설치하지 않아도 된다.
+
+tkintermapview>=1.29

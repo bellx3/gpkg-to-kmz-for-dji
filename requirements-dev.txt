@@ -1,0 +1,7 @@
+# 테스트 실행용. 반드시 저장소 루트에서 돌린다 — tests/ 안에서 실행하면
+# `from src.core...` 가 안 풀려 collection 이 깨진다.
+#
+#   python -m pytest tests/ -q
+
+-r requirements.txt
+pytest>=7.0
