@@ -99,7 +99,15 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
 
 ### GUI (`src/gui/app.py`, 1,103줄)
 
-CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-audit.md`. 알아 둘 것:
+CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-audit.md`,
+E8IGHT 디자인시스템 재구성 기록은 `docs/gui-e8ight-restyle.md`. 알아 둘 것:
+
+- **색·반경·타이포·컨트롤 높이는 전부 `src/gui/theme.py`** — E8IGHT 디자인시스템 토큰의
+  파이썬 이식본이다. `app.py` 에서 hex 를 새로 만들지 말 것. 위젯은 팩토리
+  (`T.card`·`T.entry`·`T.primary`·`T.quiet`·`T.ghost`·`T.option`·`T.check`·`T.micro`·`T.hairline`)로
+  만든다. 규칙: 강조는 시안 하나 · 구조는 그림자가 아니라 헤어라인 보더 · 측정값은 모노스페이스 ·
+  반경 3/5/8/12 · 컨트롤 높이 26/34/44 · 이모지 없음. 상태색(녹/앰버/적)은 의미가 고정돼 있어
+  강조 용도로 전용하지 않는다.
 
 - **설정 조립·프리셋 직렬화는 모듈 함수다** (`build_overrides`·`preset_from_values`·
   `values_from_preset`·`effective_naming_field`) — Tk 없이 `tests/test_gui_logic.py` 로
@@ -109,6 +117,8 @@ CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-
 - **실행 존(안전 칩·GSD·RUN·프리셋)은 스크롤 밖 하단 고정 바에 있다** — 카드가 길어져도 RUN 은 보인다.
 - **③ 상세 설정은 접이식이고 기본 접힘** — 상태는 `self._advanced_open` 으로 재생성을 건너 살아남는다.
 - 기본 지도는 **Esri Dark Gray** — CartoDB 는 2026-08 부터 익명 접근에 워터마크 타일을 반환해 뺐다.
+- **`CTkFrame` 은 기본 크기 200 을 들고 있다** — 스페이서에는 `width=1`, 배지처럼 높이를
+  줄여야 하는 프레임에는 `height=` + `pack_propagate(False)`. 안전 배지가 세로로 부푼 원인이었다.
 - 카드 안 스페이서 `CTkFrame` 에는 반드시 `width=1` — 기본 200 이 라벨 열을 밀어
   입력칸을 짜부라뜨린다(실측).
 - 변수 trace 는 `__init__` 에서 한 번만 건다 — 언어 토글 재생성에서 `_bind_events` 를

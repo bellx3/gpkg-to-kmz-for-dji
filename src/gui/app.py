@@ -23,6 +23,7 @@ from src.core.generator import (batch_process_inputs, validate_mission_config,
                                 parse_polygon_coords_from_kml, read_gpkg_layer,
                                 polygon_features, polygon_coords_from_geoms)
 from src.core import enums, gpkg
+from src.gui import theme as T
 
 try:
     import tkintermapview
@@ -37,20 +38,12 @@ BASE = Path(__file__).parent
 # 화면은 "설정 나열"이 아니라 작업 흐름이다: ① 데이터 → ② 미션 → (③ 상세) → 실행.
 # 안전 판정은 실행 버튼 바로 위 — 결정하는 자리에서 보인다.
 # ------------------------------------------------------------------------------
-ACCENT = "#1F6AA5"
-ACCENT_HOVER = "#17578C"
-COL_SAFE = "#2E7D32"
-COL_WARN = "#B45309"     # 흰 글자가 읽히는 어두운 앰버
-COL_DANGER = "#C62828"
-SURFACE_HEADER = "#15171B"   # 전역 헤더 — 가장 가라앉은 톤
-SURFACE_RAISED = "#1B1E23"   # 실행 존·오버레이 — 카드보다 한 단 떠 있는 톤
-BTN_QUIET = "#2A2E35"        # 보조 버튼
-BTN_QUIET_HOVER = "#33373E"
-TX_SECTION = "#7FB3D5"
-TX_DIM = "gray62"
+# 색·반경·타이포는 전부 src/gui/theme.py(E8IGHT 디자인시스템 토큰)에서 온다.
+# 여기서 hex 를 새로 만들지 말 것 — 강조는 시안 하나뿐이고, 상태색은 의미가 고정돼 있다.
 
-# 미리보기 폴리곤 외곽선 색 순환 — 채움 없이 테두리만(불투명 채움은 판독을 막는다).
-POLY_COLORS = ["#FFD600", "#4FC3F7", "#81C784", "#FF8A65", "#BA68C8", "#F06292"]
+# 미리보기 폴리곤 외곽선 색 순환 — 디자인시스템의 viz 시퀀스를 순서대로 쓴다(재배열 금지).
+# 채움 없이 테두리만 — 불투명 채움은 판독을 막는다.
+POLY_COLORS = T.VIZ[:6]
 
 # CartoDB 는 뺐다 — 2026-08 부터 익명 접근에 "API KEY REQUIRED" 워터마크 타일을
 # 반환한다(실측). 죽은 기본값은 없느니만 못하다. Esri 는 키 없이 안정적이다.
@@ -219,7 +212,7 @@ TRANSLATIONS = {
         "run_batch": "미션 생성 실행",
         "load_preset": "불러오기",
         "save_preset": "저장하기",
-        "system_logs": "작업 로그 (System Logs)",
+        "system_logs": "작업 로그",
         "open_report": "리포트 열기",
         "refresh_preview": "↻ 미리보기",
         "safe": "정상: 안전",
@@ -281,7 +274,7 @@ TRANSLATIONS = {
         "run_batch": "RUN BATCH MISSION",
         "load_preset": "Load Preset",
         "save_preset": "Save Preset",
-        "system_logs": "System Logs",
+        "system_logs": "SYSTEM LOG",
         "open_report": "Open Report",
         "refresh_preview": "↻ Preview",
         "safe": "SAFE",
@@ -320,8 +313,11 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
+        # 다크가 기본이자 정체성이다. 내장 위젯(스크롤바·세그먼트)이 테마 딕셔너리를 참조하므로
+        # 베이스 테마는 남기고, 눈에 보이는 위젯은 theme.py 팩토리가 전부 덮어쓴다.
         ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("dark-blue")
+        self.configure(fg_color=T.BG_APP)
 
         self.curr_lang = "ko"
         self.title(self._tr("app_title"))
@@ -476,40 +472,46 @@ class App(ctk.CTk):
     # UI 구성 — 전역 헤더 / 사이드바(워크플로) / 지도(주역) / 로그
     # --------------------------------------------------------------------------
     def _build_ui(self):
-        self.font_section = ctk.CTkFont(size=13, weight="bold")
-        self.font_body = ctk.CTkFont(size=12)
-        self.font_brand = ctk.CTkFont(size=16, weight="bold")
+        self.font_section = T.font(13, "bold")
+        self.font_body = T.font(12)
+        self.font_brand = T.font(17, "bold")
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)   # 본문(지도)
         self.grid_rowconfigure(2, weight=0)   # 로그
 
         # ---- [Header] 브랜드 · 작업 상태 · 언어 ----
-        header = ctk.CTkFrame(self, corner_radius=0, fg_color=SURFACE_HEADER, height=46)
+        # 상단 바는 시스템 규격 52px. 아래 헤어라인이 구조를 만든다 — 그림자는 쓰지 않는다.
+        header = ctk.CTkFrame(self, corner_radius=0, fg_color=T.NAVY_1000, height=52)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
         header.grid_propagate(False)
-        ctk.CTkLabel(header, text="✈  " + self._tr("app_title"),
-                     font=self.font_brand).pack(side="left", padx=(16, 10), pady=8)
-        ctk.CTkLabel(header, text=self._tr("tagline"), font=("Consolas", 11),
-                     text_color=TX_DIM).pack(side="left", pady=8)
-        ctk.CTkButton(header, text="EN/KR", width=56, height=24, command=self._toggle_language,
-                      fg_color="transparent", border_width=1,
-                      text_color=TX_DIM).pack(side="right", padx=12)
-        ctk.CTkLabel(header, textvariable=self.var_status, font=("Consolas", 12),
-                     text_color=TX_DIM).pack(side="right", padx=8)
+
+        ctk.CTkLabel(header, text=self._tr("app_title"), font=self.font_brand,
+                     text_color=T.TX_PRIMARY).pack(side="left", padx=(16, 10), pady=8)
+        ctk.CTkLabel(header, text=self._tr("tagline"), font=T.mono(11),
+                     text_color=T.TX_FAINT).pack(side="left", pady=8)
+        T.ghost(header, text="EN / KR", width=64, height=T.H_SM,
+                command=self._toggle_language).pack(side="right", padx=16)
+        ctk.CTkLabel(header, textvariable=self.var_status, font=T.font(12),
+                     text_color=T.TX_MUTED).pack(side="right", padx=10)
 
         # ---- [Left Sidebar] 설정 스크롤 + 하단 고정 실행 존 ----
-        side_wrap = ctk.CTkFrame(self, width=330, corner_radius=0)
+        side_wrap = ctk.CTkFrame(self, width=330, corner_radius=0, fg_color=T.SURFACE_1)
         side_wrap.grid(row=1, column=0, rowspan=2, sticky="nsew")
         side_wrap.grid_rowconfigure(0, weight=1)
         side_wrap.grid_columnconfigure(0, weight=1)
 
-        self.sidebar = ctk.CTkScrollableFrame(side_wrap, width=330, corner_radius=0)
+        self.sidebar = ctk.CTkScrollableFrame(side_wrap, width=330, corner_radius=0,
+                                              fg_color=T.SURFACE_1,
+                                              scrollbar_button_color=T.NAVY_700,
+                                              scrollbar_button_hover_color=T.NAVY_600)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_columnconfigure(0, weight=1)
 
-        self.action_bar = ctk.CTkFrame(side_wrap, corner_radius=0, fg_color=SURFACE_RAISED)
+        # 실행 존은 카드보다 한 단 떠 있고, 위쪽 헤어라인으로 스크롤 영역과 갈린다.
+        self.action_bar = ctk.CTkFrame(side_wrap, corner_radius=0, fg_color=T.SURFACE_RAISED)
         self.action_bar.grid(row=1, column=0, sticky="ew")
+        T.hairline(self.action_bar).pack(fill="x", side="top")
 
         self._build_data_card(row_idx=0)
         self._build_mission_card(row_idx=1)
@@ -517,7 +519,7 @@ class App(ctk.CTk):
         self._build_run_zone()
 
         # ---- [Main Area] 지도 — 이 도구의 주역 ----
-        self.map_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.map_frame = ctk.CTkFrame(self, corner_radius=0, fg_color=T.BG_CANVAS)
         self.map_frame.grid(row=1, column=1, sticky="nsew")
 
         if tkintermapview:
@@ -530,97 +532,114 @@ class App(ctk.CTk):
             self.map_view.set_position(36.5, 127.5)
             self.map_view.set_zoom(7)
 
-            self.cb_map_style = ctk.CTkOptionMenu(self.map_frame, values=list(MAP_PROVIDERS.keys()),
-                                                  command=self._change_map_provider,
-                                                  width=140, fg_color=SURFACE_RAISED,
-                                                  button_color=BTN_QUIET_HOVER)
+            # 뷰포트 위에 뜨는 컨트롤만 떠 있는 표면을 쓴다(평면 위에서는 쓰지 않는다).
+            self.cb_map_style = T.option(self.map_frame, values=list(MAP_PROVIDERS.keys()),
+                                         command=self._change_map_provider, width=150)
             self.cb_map_style.set(self._map_style)
             self.cb_map_style.place(relx=0.985, rely=0.025, anchor="ne")
 
-            ctk.CTkButton(self.map_frame, text=self._tr("refresh_preview"), width=110, height=26,
-                          fg_color=SURFACE_RAISED, hover_color=BTN_QUIET_HOVER,
-                          command=self._update_map_preview).place(relx=0.985, rely=0.085, anchor="ne")
+            T.quiet(self.map_frame, text=self._tr("refresh_preview"), width=150, height=T.H_SM,
+                    command=self._update_map_preview).place(relx=0.985, rely=0.09, anchor="ne")
 
             # 스캔 요약 — 실행 전에 "무슨 일이 벌어질지"를 지도 위에서 말해 준다
-            self.lbl_scan = ctk.CTkLabel(self.map_frame, text="  —  ", font=("Consolas", 12),
-                                         fg_color=SURFACE_RAISED, corner_radius=6,
-                                         text_color="gray80", height=30)
+            self.lbl_scan = ctk.CTkLabel(self.map_frame, text="  —  ", font=T.mono(12),
+                                         fg_color=T.SURFACE_RAISED, corner_radius=T.R_CONTROL,
+                                         text_color=T.TX_BODY, height=T.H_MD)
             self.lbl_scan.place(relx=0.015, rely=0.975, anchor="sw")
         else:
-            ctk.CTkLabel(self.map_frame,
+            ctk.CTkLabel(self.map_frame, font=T.font(12), text_color=T.TX_MUTED,
                          text="tkintermapview 미설치 — 지도 미리보기 없이 동작합니다.\n"
                               "pip install -r requirements-optional.txt").pack(expand=True)
 
         # ---- [Bottom Area] 로그 ----
-        self.log_frame = ctk.CTkFrame(self, height=190, corner_radius=0)
+        self.log_frame = ctk.CTkFrame(self, height=190, corner_radius=0, fg_color=T.SURFACE_1)
         self.log_frame.grid(row=2, column=1, sticky="ew")
         self.log_frame.grid_propagate(False)
+        T.hairline(self.log_frame).pack(fill="x", side="top")
 
-        head = ctk.CTkFrame(self.log_frame, fg_color="transparent")
-        head.pack(fill="x", padx=12, pady=(6, 0))
-        ctk.CTkLabel(head, text=self._tr("system_logs"),
-                     font=("Consolas", 12, "bold")).pack(side="left")
-        self.btn_report = ctk.CTkButton(head, text=self._tr("open_report"), width=100, height=24,
-                                        font=self.font_body, fg_color=BTN_QUIET,
-                                        hover_color=BTN_QUIET_HOVER, command=self._open_report)
+        # 38px 헤더 행 — 시스템의 카드 헤더 규격. 라틴 마이크로 라벨은 대문자.
+        head = ctk.CTkFrame(self.log_frame, fg_color="transparent", height=38)
+        head.pack(fill="x", padx=16, pady=(8, 0))
+        ctk.CTkLabel(head, text=self._tr("system_logs"), font=T.font(12, "bold"),
+                     text_color=T.TX_MUTED).pack(side="left")
+        self.btn_report = T.quiet(head, text=self._tr("open_report"), width=110,
+                                  height=T.H_SM, command=self._open_report)
         self.btn_report.pack(side="right")
         self._refresh_report_button()
 
-        self.txt_log = ctk.CTkTextbox(self.log_frame, font=("Consolas", 11))
-        self.txt_log.pack(fill="both", expand=True, padx=12, pady=6)
+        # 로그는 우물이다 — 캔버스 톤 바닥 + 헤어라인. 값은 모노스페이스.
+        self.txt_log = ctk.CTkTextbox(self.log_frame, font=T.mono(11),
+                                      corner_radius=T.R_CARD, fg_color=T.BG_CANVAS,
+                                      border_width=1, border_color=T.BORDER_SUBTLE,
+                                      text_color=T.TX_BODY,
+                                      scrollbar_button_color=T.NAVY_700,
+                                      scrollbar_button_hover_color=T.NAVY_600)
+        self.txt_log.pack(fill="both", expand=True, padx=16, pady=(4, 12))
 
     # ---- 카드 헬퍼 ----
     def _card(self, row_idx, title_key):
-        card = ctk.CTkFrame(self.sidebar, corner_radius=10)
-        card.grid(row=row_idx, column=0, padx=12, pady=(12, 0), sticky="ew")
+        card = T.card(self.sidebar)
+        card.grid(row=row_idx, column=0, padx=16, pady=(12, 0), sticky="ew")
         card.grid_columnconfigure(1, weight=1)
+        # 카드 헤더 행 + 아래 헤어라인 — 구조는 여백이 아니라 선으로 나뉜다.
         ctk.CTkLabel(card, text=self._tr(title_key), font=self.font_section,
-                     text_color=TX_SECTION).grid(row=0, column=0, columnspan=3,
-                                                 sticky="w", padx=12, pady=(10, 6))
+                     text_color=T.TX_PRIMARY).grid(row=0, column=0, columnspan=3,
+                                                   sticky="w", padx=14, pady=(11, 8))
+        T.hairline(card).grid(row=0, column=0, columnspan=3, sticky="sew")
         return card
 
     def _entry_row(self, card, r, label_key, var):
-        ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body).grid(
-            row=r, column=0, sticky="w", padx=(12, 8), pady=3)
-        ctk.CTkEntry(card, textvariable=var, font=self.font_body).grid(
-            row=r, column=1, columnspan=2, sticky="ew", padx=(0, 12), pady=3)
+        # 필드 라벨은 문장이 아니라 명사다.
+        ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=r, column=0, sticky="w",
+                                                 padx=(14, 8), pady=4)
+        # 설정값은 측정값이다 — 모노스페이스로 읽는다.
+        T.entry(card, textvariable=var, font=T.mono(12)).grid(
+            row=r, column=1, columnspan=2, sticky="ew", padx=(0, 14), pady=4)
 
     def _pad_bottom(self, card, r):
         # width 를 명시하지 않으면 CTkFrame 기본 200 이 col0 최소폭이 되어 입력칸을 짜부라뜨린다
-        ctk.CTkFrame(card, height=6, width=1, fg_color="transparent").grid(
+        ctk.CTkFrame(card, height=10, width=1, fg_color="transparent").grid(
             row=r, column=0, columnspan=3)
 
     # ---- ① 데이터 ----
     def _build_data_card(self, row_idx):
         card = self._card(row_idx, "sec_data")
 
-        ctk.CTkLabel(card, text=self._tr("fmt"), font=self.font_body).grid(
-            row=1, column=0, sticky="w", padx=(12, 8), pady=3)
+        ctk.CTkLabel(card, text=self._tr("fmt"), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
         ctk.CTkSegmentedButton(card, values=["gpkg", "kml", "auto"],
-                               variable=self.var_input_format,
-                               font=self.font_body).grid(row=1, column=1, columnspan=2,
-                                                         sticky="ew", padx=(0, 12), pady=3)
+                               variable=self.var_input_format, font=T.font(12),
+                               corner_radius=T.R_CONTROL, height=T.H_MD - 6,
+                               fg_color=T.NAVY_1000, text_color=T.TX_MUTED,
+                               selected_color=T.CYAN_700, selected_hover_color=T.CYAN_600,
+                               unselected_color=T.NAVY_1000, unselected_hover_color=T.SURFACE_HOVER,
+                               border_width=1).grid(row=1, column=1, columnspan=2,
+                                                    sticky="ew", padx=(0, 14), pady=4)
 
-        ctk.CTkLabel(card, text=self._tr("in"), font=self.font_body).grid(row=2, column=0, sticky="w", padx=(12, 8), pady=3)
-        ctk.CTkEntry(card, textvariable=self.var_input_dir, font=self.font_body).grid(row=2, column=1, sticky="ew", pady=3)
-        ctk.CTkButton(card, text=self._tr("browse"), width=48, font=self.font_body,
-                      command=lambda: self._choose_dir(self.var_input_dir)).grid(row=2, column=2, padx=(5, 12), pady=3)
+        ctk.CTkLabel(card, text=self._tr("in"), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=2, column=0, sticky="w", padx=(14, 8), pady=4)
+        T.entry(card, textvariable=self.var_input_dir).grid(row=2, column=1, sticky="ew", pady=4)
+        T.quiet(card, text=self._tr("browse"), width=52,
+                command=lambda: self._choose_dir(self.var_input_dir)).grid(row=2, column=2, padx=(6, 14), pady=4)
 
-        ctk.CTkLabel(card, text=self._tr("out"), font=self.font_body).grid(row=3, column=0, sticky="w", padx=(12, 8), pady=3)
-        ctk.CTkEntry(card, textvariable=self.var_out_dir, font=self.font_body).grid(row=3, column=1, sticky="ew", pady=3)
-        ctk.CTkButton(card, text=self._tr("browse"), width=48, font=self.font_body,
-                      command=lambda: self._choose_dir(self.var_out_dir)).grid(row=3, column=2, padx=(5, 12), pady=3)
+        ctk.CTkLabel(card, text=self._tr("out"), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=3, column=0, sticky="w", padx=(14, 8), pady=4)
+        T.entry(card, textvariable=self.var_out_dir).grid(row=3, column=1, sticky="ew", pady=4)
+        T.quiet(card, text=self._tr("browse"), width=52,
+                command=lambda: self._choose_dir(self.var_out_dir)).grid(row=3, column=2, padx=(6, 14), pady=4)
 
-        ctk.CTkLabel(card, text=self._tr("name"), font=self.font_body).grid(row=4, column=0, sticky="w", padx=(12, 8), pady=3)
-        self.cb_naming = ctk.CTkOptionMenu(card, variable=self.var_naming_field,
-                                           values=self._naming_values, font=self.font_body)
-        self.cb_naming.grid(row=4, column=1, sticky="ew", pady=3)
-        ctk.CTkButton(card, text=self._tr("load_fields"), width=48, font=self.font_body,
-                      command=self._refresh_naming_fields).grid(row=4, column=2, padx=(5, 12), pady=3)
+        ctk.CTkLabel(card, text=self._tr("name"), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=4, column=0, sticky="w", padx=(14, 8), pady=4)
+        self.cb_naming = T.option(card, variable=self.var_naming_field,
+                                  values=self._naming_values)
+        self.cb_naming.grid(row=4, column=1, sticky="ew", pady=4)
+        T.quiet(card, text=self._tr("load_fields"), width=52,
+                command=self._refresh_naming_fields).grid(row=4, column=2, padx=(6, 14), pady=4)
 
-        # 고른 필드가 파일명으로 쓸 만한지 — 고르는 자리에서 바로 보인다
-        self.lbl_field_quality = ctk.CTkLabel(card, text="", font=("Consolas", 11),
-                                              text_color=TX_DIM, anchor="w")
+        # 고른 필드가 파일명으로 쓸 만한지 — 고르는 자리에서 바로 보인다. 개수는 모노스페이스.
+        self.lbl_field_quality = ctk.CTkLabel(card, text="", font=T.mono(11),
+                                              text_color=T.TX_FAINT, anchor="w")
         self.lbl_field_quality.grid(row=5, column=1, columnspan=2, sticky="w", pady=(0, 2))
         self._update_field_quality()
 
@@ -630,10 +649,11 @@ class App(ctk.CTk):
     def _build_mission_card(self, row_idx):
         card = self._card(row_idx, "sec_mission")
 
-        ctk.CTkLabel(card, text=self._tr("model"), font=self.font_body).grid(row=1, column=0, sticky="w", padx=(12, 8), pady=3)
-        self.cb_drone = ctk.CTkOptionMenu(card, variable=self.var_drone_model,
-                                          values=enums.get_supported_drone_models(), font=self.font_body)
-        self.cb_drone.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 12), pady=3)
+        ctk.CTkLabel(card, text=self._tr("model"), font=self.font_body,
+                     text_color=T.TX_MUTED).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
+        self.cb_drone = T.option(card, variable=self.var_drone_model,
+                                 values=enums.get_supported_drone_models())
+        self.cb_drone.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 14), pady=4)
 
         self._entry_row(card, 2, "alt_m", self.var_altitude)
         self._entry_row(card, 3, "speed_ms", self.var_auto_flight_speed)
@@ -643,13 +663,14 @@ class App(ctk.CTk):
     # ---- ③ 상세 설정 (접이식 — 매일 만지는 값이 아니다) ----
     def _build_advanced_section(self, row_idx):
         self.btn_adv = ctk.CTkButton(self.sidebar, text="", command=self._toggle_advanced,
-                                     fg_color="transparent", hover_color=SURFACE_RAISED,
-                                     text_color=TX_SECTION, anchor="w", height=34,
-                                     font=self.font_section, corner_radius=10)
-        self.btn_adv.grid(row=row_idx, column=0, padx=12, pady=(12, 0), sticky="ew")
+                                     fg_color="transparent", hover_color=T.ACCENT_QUIET,
+                                     text_color=T.TX_MUTED, anchor="w", height=T.H_MD,
+                                     font=self.font_section, corner_radius=T.R_CARD,
+                                     border_width=1, border_color=T.BORDER_SUBTLE)
+        self.btn_adv.grid(row=row_idx, column=0, padx=16, pady=(12, 0), sticky="ew")
 
-        card = ctk.CTkFrame(self.sidebar, corner_radius=10)
-        card.grid(row=row_idx + 1, column=0, padx=12, pady=(4, 0), sticky="ew")
+        card = T.card(self.sidebar)
+        card.grid(row=row_idx + 1, column=0, padx=16, pady=(6, 0), sticky="ew")
         card.grid_columnconfigure(1, weight=1)
         self.adv_card = card
 
@@ -664,23 +685,24 @@ class App(ctk.CTk):
             ("overlap_cam", self.var_overlap_camera_h, self.var_overlap_camera_w),
             ("overlap_lidar", self.var_overlap_lidar_h, self.var_overlap_lidar_w),
         ], start=6):
-            ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body).grid(
-                row=r, column=0, sticky="w", padx=(12, 8), pady=3)
+            ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body,
+                         text_color=T.TX_MUTED).grid(row=r, column=0, sticky="w",
+                                                     padx=(14, 8), pady=4)
             sub = ctk.CTkFrame(card, fg_color="transparent")
-            sub.grid(row=r, column=1, columnspan=2, sticky="w", pady=3)
-            ctk.CTkEntry(sub, textvariable=v1, width=52, font=self.font_body).pack(side="left")
-            ctk.CTkEntry(sub, textvariable=v2, width=52, font=self.font_body).pack(side="left", padx=(6, 0))
+            sub.grid(row=r, column=1, columnspan=2, sticky="w", pady=4)
+            T.entry(sub, textvariable=v1, width=56, font=T.mono(12)).pack(side="left")
+            T.entry(sub, textvariable=v2, width=56, font=T.mono(12)).pack(side="left", padx=(6, 0))
 
-        self.chk_tf = ctk.CTkCheckBox(card, text=self._tr("tf_follow"), font=self.font_body,
-                                      variable=self.var_use_terrain_follow)
-        self.chk_tf.grid(row=8, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 3))
+        self.chk_tf = T.check(card, text=self._tr("tf_follow"),
+                              variable=self.var_use_terrain_follow)
+        self.chk_tf.grid(row=8, column=0, columnspan=3, sticky="w", padx=14, pady=(10, 4))
         for r, (key, var) in enumerate([
             ("set_times", self.var_set_times),
             ("takeoff_ref", self.var_set_takeoff_ref_point),
             ("pack_kmz", self.var_pack_kmz),
         ], start=9):
-            ctk.CTkCheckBox(card, text=self._tr(key), font=self.font_body,
-                            variable=var).grid(row=r, column=0, columnspan=3, sticky="w", padx=12, pady=3)
+            T.check(card, text=self._tr(key), variable=var).grid(
+                row=r, column=0, columnspan=3, sticky="w", padx=14, pady=4)
 
         self._pad_bottom(card, 12)
         self._apply_advanced_state()
@@ -700,28 +722,38 @@ class App(ctk.CTk):
     # ---- 실행 존: 안전 판정은 결정하는 자리에서 보여야 한다 ----
     def _build_run_zone(self):
         frm = ctk.CTkFrame(self.action_bar, fg_color="transparent")
-        frm.pack(fill="x", padx=12, pady=(10, 10))
+        frm.pack(fill="x", padx=16, pady=(12, 14))
 
-        self.btn_safety_indicator = ctk.CTkButton(frm, text=self._tr("checking"), fg_color="gray",
-                                                  state="disabled", text_color_disabled="white",
-                                                  height=30, font=ctk.CTkFont(size=12, weight="bold"))
-        self.btn_safety_indicator.pack(fill="x")
-        self.lbl_metrics = ctk.CTkLabel(frm, text="-", font=("Consolas", 11), text_color=TX_DIM)
-        self.lbl_metrics.pack(anchor="w", pady=(3, 6))
+        T.micro(frm, "safety").pack(anchor="w", pady=(0, 6))
 
-        self.btn_run = ctk.CTkButton(frm, text=self._tr("run_batch"), height=44,
-                                     font=ctk.CTkFont(size=14, weight="bold"),
-                                     command=self._on_run, fg_color=ACCENT, hover_color=ACCENT_HOVER)
-        self.btn_run.pack(fill="x", pady=(0, 6))
+        # 안전 판정은 배지다 — 솔리드 채움이 아니라 상태색 틴트 + 좌측 상태 레일.
+        # 상태색은 의미가 고정돼 있어 강조 용도로 전용되지 않는다.
+        # height 를 명시하지 않으면 CTkFrame 기본 200 이 배지를 세로로 부풀린다(실측).
+        self.safety_card = ctk.CTkFrame(frm, corner_radius=T.R_CONTROL, border_width=1,
+                                        height=T.H_MD, fg_color=T.STATUS["idle"][1],
+                                        border_color=T.BORDER_SUBTLE)
+        self.safety_card.pack(fill="x")
+        self.safety_card.pack_propagate(False)
+        self.safety_rail = ctk.CTkFrame(self.safety_card, width=2, height=T.H_MD,
+                                        corner_radius=0, fg_color=T.STATUS["idle"][0])
+        self.safety_rail.pack(side="left", fill="y", padx=(0, 10))
+        self.btn_safety_indicator = ctk.CTkLabel(self.safety_card, text=self._tr("checking"),
+                                                 font=T.font(12, "bold"), anchor="w",
+                                                 height=T.H_MD, text_color=T.STATUS["idle"][0])
+        self.btn_safety_indicator.pack(side="left", fill="x", expand=True, pady=2)
+
+        self.lbl_metrics = ctk.CTkLabel(frm, text="-", font=T.mono(11), text_color=T.TX_FAINT)
+        self.lbl_metrics.pack(anchor="w", pady=(6, 10))
+
+        self.btn_run = T.primary(frm, text=self._tr("run_batch"), command=self._on_run)
+        self.btn_run.pack(fill="x", pady=(0, 8))
 
         sub = ctk.CTkFrame(frm, fg_color="transparent")
         sub.pack(fill="x")
-        ctk.CTkButton(sub, text=self._tr("load_preset"), width=100, font=self.font_body,
-                      fg_color=BTN_QUIET, hover_color=BTN_QUIET_HOVER,
-                      command=self._on_load_preset).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        ctk.CTkButton(sub, text=self._tr("save_preset"), width=100, font=self.font_body,
-                      fg_color=BTN_QUIET, hover_color=BTN_QUIET_HOVER,
-                      command=self._on_save_preset).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        T.quiet(sub, text=self._tr("load_preset"), width=100,
+                command=self._on_load_preset).pack(side="left", expand=True, fill="x", padx=(0, 3))
+        T.quiet(sub, text=self._tr("save_preset"), width=100,
+                command=self._on_save_preset).pack(side="left", expand=True, fill="x", padx=(3, 0))
 
     def _bind_events(self):
         """변수 trace 는 변수와 함께 살아남으므로 최초 1회만 건다 (재생성 시 재호출 금지 — 중복 트리거)."""
@@ -763,12 +795,14 @@ class App(ctk.CTk):
         self._last_safety = status
         self._last_safety_msgs = result.get('messages', [])
 
-        color = {'safe': COL_SAFE, 'warning': COL_WARN, 'danger': COL_DANGER}.get(status, 'gray')
+        fg, bg = T.STATUS.get(status, T.STATUS["idle"])
         self.btn_safety_indicator.configure(
-            text=f"{self._tr('status_prefix')}{self._tr(status)}", fg_color=color)
-        approx = f" (≈{metrics.get('spec_model')} 사양)" if metrics.get('spec_approx') else ""
+            text=f"{self._tr('status_prefix')}{self._tr(status)}", text_color=fg)
+        self.safety_card.configure(fg_color=bg)
+        self.safety_rail.configure(fg_color=fg)
+        approx = f" · ≈{metrics.get('spec_model')} 사양" if metrics.get('spec_approx') else ""
         self.lbl_metrics.configure(
-            text=f"GSD {metrics.get('gsd', '-')}cm · Blur {metrics.get('blur', '-')}cm{approx}")
+            text=f"GSD {metrics.get('gsd', '-')} cm · BLUR {metrics.get('blur', '-')} cm{approx}")
 
     # ---- 지도 미리보기 ----
     def _debounce_map_preview(self):
@@ -985,17 +1019,18 @@ class App(ctk.CTk):
             return
         name = effective_naming_field(self.var_naming_field.get())
         if name is None:
-            self.lbl_field_quality.configure(text=self._tr("field_quality_auto"), text_color=TX_DIM)
+            self.lbl_field_quality.configure(text=self._tr("field_quality_auto"), text_color=T.TX_FAINT)
             return
         st = getattr(self, "_field_stats", {}).get(name)
         if st is None:
-            self.lbl_field_quality.configure(text="", text_color=TX_DIM)
+            self.lbl_field_quality.configure(text="", text_color=T.TX_FAINT)
         elif st.collisions:
             self.lbl_field_quality.configure(
-                text=self._tr("field_quality_dup").format(d=st.collisions), text_color=COL_WARN)
+                text=self._tr("field_quality_dup").format(d=st.collisions),
+                text_color=T.STATUS["warning"][0])
         else:
             self.lbl_field_quality.configure(
-                text=self._tr("field_quality_ok").format(n=st.unique), text_color=TX_DIM)
+                text=self._tr("field_quality_ok").format(n=st.unique), text_color=T.TX_FAINT)
 
     def _get_kml_fields(self, input_dir: Path) -> list:
         files = list(input_dir.glob('*.kml'))
