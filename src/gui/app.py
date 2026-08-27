@@ -28,7 +28,8 @@ from src.gui import theme as T
 try:
     import tkintermapview
     from src.gui import maptiles
-    maptiles.install()   # 타일마다 새 연결을 열던 것을 세션 재사용 + 디스크 캐시로 (실측 1.56s → 0.08s)
+    maptiles.install()          # 타일마다 새 연결 → 세션 재사용 + 디스크 캐시 (실측 1.56s → 0.08s)
+    maptiles.patch_precache()   # 선행 캐시 반경 8(≈289장) → 2 — PhotoImage 가 Tk 락을 잡아 첫 화면을 늦췄다
 except ImportError:
     tkintermapview = None
     maptiles = None
@@ -62,6 +63,9 @@ MAP_PROVIDERS = {
 
 # 사이드바 폭 — 입력·출력 경로가 들어가는 자리라 좁으면 경로가 잘린다.
 SIDEBAR_W = 400
+
+# 데이터를 읽기 전의 기본 시야 — 한반도 전체.
+MAP_HOME = (36.5, 127.5, 7)
 
 PREVIEW_MAX_FILES = 20     # 메인 루프를 오래 막으면 타일 로딩까지 굶는다 (docs/gui-audit.md)
 PREVIEW_MAX_FEATURES = 150
@@ -537,8 +541,8 @@ class App(ctk.CTk):
                 self._map_style = "Esri Dark"
             url, mz = MAP_PROVIDERS[self._map_style]
             self.map_view.set_tile_server(url, max_zoom=mz)
-            self.map_view.set_position(36.5, 127.5)
-            self.map_view.set_zoom(7)
+            self.map_view.set_position(MAP_HOME[0], MAP_HOME[1])
+            self.map_view.set_zoom(MAP_HOME[2])
 
             # 뷰포트 위에 뜨는 컨트롤만 떠 있는 표면을 쓴다(평면 위에서는 쓰지 않는다).
             self.cb_map_style = T.option(self.map_frame, values=list(MAP_PROVIDERS.keys()),

@@ -29,6 +29,7 @@ CACHE_DB = CACHE_DIR / "tilecache.sqlite"
 MAX_TILES = 40_000
 
 _installed = False
+_fetcher = None
 
 
 class _Response:
@@ -53,6 +54,8 @@ class TileFetcher:
         self.cache_db = cache_db
         self._local = threading.local()
         self._write_lock = threading.Lock()
+        self._inflight = {}                    # url -> Event, 진행 중인 요청
+        self._inflight_lock = threading.Lock()
 
         self.session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(
@@ -124,12 +127,34 @@ class TileFetcher:
         if cached is not None:
             return _Response(cached)
 
-        resp = self.session.get(url, stream=True, timeout=10)
-        data = resp.content
-        # 오류 페이지·워터마크 타일을 캐시에 굳히지 않는다.
-        if resp.status_code == 200 and data:
-            self._write(url, data)
-        return _Response(data)
+        # 같은 타일을 두 곳(프리페치 스레드 · 위젯 로딩 스레드)에서 동시에 노릴 수 있다.
+        # 뒤에 온 쪽은 앞선 요청이 끝날 때까지 기다렸다가 캐시에서 읽는다 — 같은 바이트를
+        # 두 번 받지 않는다.
+        with self._inflight_lock:
+            ev = self._inflight.get(url)
+            leader = ev is None
+            if leader:
+                ev = threading.Event()
+                self._inflight[url] = ev
+
+        if not leader:
+            ev.wait(timeout=15)
+            cached = self._read(url)
+            if cached is not None:
+                return _Response(cached)
+
+        try:
+            resp = self.session.get(url, stream=True, timeout=10)
+            data = resp.content
+            # 오류 페이지·워터마크 타일을 캐시에 굳히지 않는다.
+            if resp.status_code == 200 and data:
+                self._write(url, data)
+            return _Response(data)
+        finally:
+            if leader:
+                with self._inflight_lock:
+                    self._inflight.pop(url, None)
+                ev.set()
 
 
 def install() -> bool:
@@ -144,7 +169,9 @@ def install() -> bool:
         import tkintermapview.map_widget as mw
         if not hasattr(mw, "requests"):
             return False
-        mw.requests = TileFetcher()
+        global _fetcher
+        _fetcher = TileFetcher()
+        mw.requests = _fetcher
         _installed = True
         return True
     except Exception:
@@ -156,3 +183,85 @@ def cache_size_mb() -> float:
         return CACHE_DB.stat().st_size / (1024 * 1024)
     except Exception:
         return 0.0
+
+
+# ------------------------------------------------------------------------------
+# 선행 캐시(pre-cache) 억제
+#
+# 연결 재사용으로 네트워크는 사실상 0 이 됐는데도 첫 화면이 늦었다. 계측해 보니
+# 원인이 바뀌어 있었다(1600x900 · 줌 7 · 캐시 워밤):
+#
+#     타일 요청 296 장 (전부 캐시 히트, 네트워크 0.00s)
+#     request_image 합계 7.55s  = 전부 디코드 + ImageTk.PhotoImage (장당 25ms)
+#
+# 화면에 실제로 보이는 타일은 30여 장이다. 나머지는 `pre_cache()` 가 반경 8까지
+# 넓혀 가며 미리 받는 것이고(≈289장), **PhotoImage 생성은 Tk 락을 잡으므로**
+# 보이는 타일의 렌더와 정면으로 경쟁한다. 즉 선행 캐시가 첫 화면을 늦춘다.
+#
+# 그래서 반경을 좁히고, 첫 화면이 그려질 시간을 준 뒤에 시작하게 만든다.
+# 패닝 체감을 위해 선행 캐시를 아예 끄지는 않는다 — 반경 2면 한 화면 바깥 한 겹이다.
+#
+# 콜드(빈 캐시) 실측, 첫 화면이 다 찰 때까지:
+#     원본(반경 8, 즉시 시작)   4.14s   타일 294장
+#     반경 2 + 1.5s 지연        3.35s   타일 105장
+# 반경을 0·1·2 로 흔들어도 3.4s 대에서 차이가 없다(지연이 이미 경쟁을 없앴다) — 2를 택했다.
+# 남은 시간은 앱 구동 약 1.0s + 라이브러리가 첫 화면에 요청하는 104장(13열×8행, 전부 고유)의
+# 네트워크다. 이 장수를 줄이려면 tkintermapview 의 타일 범위 계산에 손대야 한다 — 하지 않았다.
+# ------------------------------------------------------------------------------
+
+PRECACHE_RADIUS = 2
+PRECACHE_WARMUP_S = 1.5
+
+_precache_patched = False
+
+
+def patch_precache(radius: int = PRECACHE_RADIUS, warmup_s: float = PRECACHE_WARMUP_S) -> bool:
+    """`TkinterMapView.pre_cache` 를 좁은 반경 · 늦은 시작 판으로 교체한다.
+
+    위젯 생성 **전에** 불러야 한다 — pre_cache 스레드는 `__init__` 에서 시작된다.
+    """
+    global _precache_patched
+    if _precache_patched:
+        return True
+    try:
+        import time as _time
+        import sqlite3 as _sqlite3
+        import tkintermapview.map_widget as mw
+
+        def pre_cache(self):
+            # 원본과 같은 구조. 다른 점은 radius 상한과 시작 지연뿐이다.
+            _time.sleep(warmup_s)
+            last_position = None
+            r = 1
+            zoom = round(self.zoom)
+            db_cursor = None
+            if self.database_path is not None:
+                db_cursor = _sqlite3.connect(self.database_path).cursor()
+
+            while self.running:
+                if last_position != self.pre_cache_position:
+                    last_position = self.pre_cache_position
+                    zoom = round(self.zoom)
+                    r = 1
+
+                if last_position is not None and r <= radius:
+                    px, py = self.pre_cache_position
+                    for x in range(px - r, px + r + 1):
+                        for y in (py + r, py - r):
+                            if f"{zoom}{x}{y}" not in self.tile_image_cache:
+                                self.request_image(zoom, x, y, db_cursor=db_cursor)
+                    for y in range(py - r, py + r + 1):
+                        for x in (px + r, px - r):
+                            if f"{zoom}{x}{y}" not in self.tile_image_cache:
+                                self.request_image(zoom, x, y, db_cursor=db_cursor)
+                    r += 1
+                    # 한 겹 받을 때마다 숨을 돌린다 — Tk 락을 독점하지 않는다.
+                    _time.sleep(0.05)
+                else:
+                    _time.sleep(0.1)
+
+        mw.TkinterMapView.pre_cache = pre_cache
+        _precache_patched = True
+        return True
+    except Exception:
+        return False
