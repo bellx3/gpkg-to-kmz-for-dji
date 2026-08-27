@@ -227,7 +227,6 @@ TRANSLATIONS = {
         "save_preset": "프리셋 저장",
         "system_logs": "작업 로그",
         "open_report": "리포트 열기",
-        "refresh_preview": "↻ 미리보기",
         "safe": "정상: 안전",
         "warning": "주의: 확인 필요",
         "danger": "위험: 설정 조정",
@@ -292,7 +291,6 @@ TRANSLATIONS = {
         "save_preset": "Save Preset",
         "system_logs": "SYSTEM LOG",
         "open_report": "Open Report",
-        "refresh_preview": "↻ Preview",
         "safe": "SAFE",
         "warning": "CHECK",
         "danger": "DANGER",
@@ -554,9 +552,6 @@ class App(ctk.CTk):
                                          command=self._change_map_provider, width=150)
             self.cb_map_style.set(self._map_style)
             self.cb_map_style.place(relx=0.985, rely=0.025, anchor="ne")
-
-            T.quiet(self.map_frame, text=self._tr("refresh_preview"), width=150, height=T.H_SM,
-                    command=self._update_map_preview).place(relx=0.985, rely=0.09, anchor="ne")
 
             # 스캔 요약 — 실행 전에 "무슨 일이 벌어질지"를 지도 위에서 말해 준다
             self.lbl_scan = ctk.CTkLabel(self.map_frame, text="  —  ", font=T.mono(12),
