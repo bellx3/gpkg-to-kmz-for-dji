@@ -13,7 +13,8 @@ from shapely.geometry import Point, Polygon
 
 from src.core.generator import NS, batch_process_inputs
 
-TEMPLATES = Path(__file__).resolve().parent.parent / 'src' / 'templates'
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES = REPO_ROOT / 'src' / 'templates'
 
 # 제주시청 부근. 좌표가 엉뚱한 데로 가면 눈으로 바로 걸린다.
 JEJU_LON, JEJU_LAT = 126.531, 33.499
@@ -185,3 +186,43 @@ def test_hole_in_polygon_is_reported(tmp_path, make_gpkg, capsys):
                          set_times=False, pack_kmz=True, overrides=OVERRIDES)
     out = capsys.readouterr().out
     assert '구멍' in out and '메워집니다' in out
+
+
+def test_cli_help_works():
+    """--help 가 크래시하지 않는지. argparse 는 help 를 % 포맷으로 확장하므로
+    '중첩(%)' 같은 문자열은 '%%' 로 써야 한다 — 안 그러면 --help 자체가 죽는다."""
+    import subprocess, sys
+    r = subprocess.run([sys.executable, "-m", "src.core.generator", "--help"],
+                       capture_output=True, text=True, encoding="utf-8",
+                       cwd=str(REPO_ROOT))
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "--naming-field" in r.stdout
+
+
+def test_cli_default_template_paths_exist():
+    """CLI 기본 경로가 실제 파일을 가리키는지.
+
+    회귀: base 가 이 파일의 폴더(src/core)라 --template 기본값이
+    src/core/template.kml 을 가리켰고, 경로 넷을 모두 넘기지 않으면 CLI 가
+    아예 돌지 않았다.
+    """
+    import argparse, runpy, sys
+    from unittest import mock
+    captured = {}
+    real_parse = argparse.ArgumentParser.parse_args
+
+    def spy(self, *a, **k):
+        captured['defaults'] = {ac.dest: ac.default for ac in self._actions}
+        raise SystemExit(0)          # 인자 파싱 직전에 멈춘다
+
+    with mock.patch.object(argparse.ArgumentParser, 'parse_args', spy):
+        try:
+            runpy.run_module("src.core.generator", run_name="__main__")
+        except SystemExit:
+            pass
+    d = captured['defaults']
+    assert Path(d['template']).exists(), d['template']
+    assert Path(d['waylines']).exists(), d['waylines']
+    # 입출력 기본값은 저장소 루트 아래여야 한다 (src/core 아래가 아니라)
+    assert Path(d['input_dir']).parent == REPO_ROOT, d['input_dir']
+    assert Path(d['out_dir']).parent == REPO_ROOT, d['out_dir']

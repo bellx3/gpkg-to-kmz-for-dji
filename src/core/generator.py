@@ -568,14 +568,18 @@ def validate_mission_config(overrides: Optional[Dict]) -> Dict:
 # CLI 엔트리포인트
 # -----------------------------
 if __name__ == '__main__':
-    base = Path(__file__).parent
+    # src/core/ 가 아니라 **저장소 루트** 기준이어야 한다. 예전에는 base 가 이 파일의
+    # 폴더라 --template 기본값이 src/core/template.kml 을 가리켜 CLI 가 기본값만으로는
+    # 절대 돌지 않았다(GUI 는 BASE.parent.parent 로 루트를 잡아 무사했다).
+    base = Path(__file__).resolve().parent.parent.parent
+    templates = base / 'src' / 'templates'
 
     import argparse
     parser = argparse.ArgumentParser(description='KML 템플릿에 폴리곤 좌표를 주입하여 KMZ/KML 생성 (KML/GPKG 입력 지원)')
     parser.add_argument('--input-dir', type=str, default=str(base / 'input'), help='입력 폴더 경로 (KML 또는 GPKG)')
     parser.add_argument('--input-format', type=str, choices=['auto', 'kml', 'gpkg'], default='gpkg', help='입력 포맷 지정(auto/kml/gpkg)')
-    parser.add_argument('--template', type=str, default=str(base / 'template.kml'), help='템플릿 KML 경로')
-    parser.add_argument('--waylines', type=str, default=str(base / 'waylines.wpml'), help='waylines.wpml 경로')
+    parser.add_argument('--template', type=str, default=str(templates / 'template.kml'), help='템플릿 KML 경로')
+    parser.add_argument('--waylines', type=str, default=str(templates / 'waylines.wpml'), help='waylines.wpml 경로')
     parser.add_argument('--out-dir', type=str, default=str(base / 'output'), help='출력 폴더 경로')
     parser.add_argument('--pack-kmz', action='store_true', help='KMZ로 패키징 (기본: 켜짐)')
     parser.add_argument('--no-pack-kmz', action='store_true', help='KMZ 비활성화(KML만 출력)')
@@ -590,10 +594,10 @@ if __name__ == '__main__':
     parser.add_argument('--altitude', type=float, default=None, help='고도값(Placemark height/ellipsoidHeight, wayline globalShootHeight)')
     parser.add_argument('--shoot-height', type=float, default=None, help='waylineCoordinateSysParam의 globalShootHeight 별도 설정')
     parser.add_argument('--margin', type=int, default=None, help='마진값')
-    parser.add_argument('--overlap-camera-h', type=int, default=None, help='카메라 수평 중첩(%)')
-    parser.add_argument('--overlap-camera-w', type=int, default=None, help='카메라 수직 중첩(%)')
-    parser.add_argument('--overlap-lidar-h', type=int, default=None, help='라이다 수평 중첩(%)')
-    parser.add_argument('--overlap-lidar-w', type=int, default=None, help='라이다 수직 중첩(%)')
+    parser.add_argument('--overlap-camera-h', type=int, default=None, help='카메라 수평 중첩(%%)')
+    parser.add_argument('--overlap-camera-w', type=int, default=None, help='카메라 수직 중첩(%%)')
+    parser.add_argument('--overlap-lidar-h', type=int, default=None, help='라이다 수평 중첩(%%)')
+    parser.add_argument('--overlap-lidar-w', type=int, default=None, help='라이다 수직 중첩(%%)')
     parser.add_argument('--auto-flight-speed', type=int, default=None, help='자동 비행 속도')
     parser.add_argument('--global-transitional-speed', type=int, default=None, help='미션 전환 속도')
     parser.add_argument('--takeoff-security-height', type=int, default=None, help='이륙 보안 고도')
