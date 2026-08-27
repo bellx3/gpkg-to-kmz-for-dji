@@ -92,7 +92,10 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
 - **`enums.py`** — 기체/페이로드의 DJI 정수 enum. WPML 이 모델명이 아니라 숫자를 요구한다. `m300*`/`m350*` 는 접두사 매칭으로 H20 을 기본 페이로드로 가정한다.
 - **`validator.py`** — 안전·품질 판정. GSD `(H·Sw)/(F·Iw)`, 모션 블러 `V·S`. **블러 > GSD 면 danger, GSD 의 50% 초과면 warning.** 카메라 사양(`CAMERA_SPECS`)은 4기종만 있고 나머지는 Mavic 3E 로 폴백한다 — 지원 기체 25종에 비해 한참 적으므로 다른 기체의 GSD 는 신뢰도가 낮다.
 - **`reporter.py`** — 배치 결과를 단일 HTML 리포트로. 템플릿이 f-string 이라 CSS 중괄호가 `{{ }}` 로 이스케이프되어 있다.
-- **`inspector.py`** — 위 참조. 라이브러리가 아니라 CLI 스크립트다.
+- **`inspector.py`** — 위 참조. CLI 이지만 함수(`load_kmz`·`geo_check` 등)로도 임포트된다.
+  KML/WPML 값 나란히 출력에 더해 **임무 폴리곤 vs 실행 웨이포인트의 지리 간극**을 재서
+  200m 초과면 경고한다 — waylines.wpml 은 원 템플릿 현장의 웨이포인트가 그대로 실리는
+  파일이기 때문이다(Pilot 2 재생성 전제, `docs/roadmap.md` Task 4).
 
 ### GUI (`src/gui/app.py`, 1,002줄)
 

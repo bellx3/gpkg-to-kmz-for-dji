@@ -44,3 +44,14 @@ def test_generate_report(tmp_path):
     assert 'SAFE' in content
     assert 'WARNING' in content
     assert 'DANGER' in content
+
+
+def test_report_carries_waylines_notice(tmp_path):
+    # waylines.wpml 이 원 현장 웨이포인트를 담는다는 고지는 모든 리포트에 있어야 한다
+    report_path = generate_report([{
+        'name': 'm', 'success': True, 'status': 'safe',
+        'messages': [], 'metrics': {}, 'altitude': 100, 'speed': 5
+    }], tmp_path)
+    content = report_path.read_text(encoding='utf-8')
+    assert 'waylines.wpml' in content
+    assert 'Pilot 2' in content

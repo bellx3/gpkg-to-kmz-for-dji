@@ -28,6 +28,8 @@ HTML_TEMPLATE = """
         .status-warning {{ color: #f39c12; font-weight: bold; }}
         .status-danger {{ color: #dc3545; font-weight: bold; }}
         .footer {{ margin-top: 30px; text-align: center; font-size: 0.8em; color: #777; }}
+        .notice {{ background: #fff8e1; border-left: 4px solid #f39c12; padding: 12px 16px;
+                   border-radius: 4px; margin-bottom: 20px; font-size: 0.92em; }}
     </style>
 </head>
 <body>
@@ -53,6 +55,14 @@ HTML_TEMPLATE = """
                 <div>{timestamp}</div>
             </div>
         </div>
+    </div>
+
+    <div class="notice">
+        <b>비행 전 확인:</b> 이 KMZ 의 <code>waylines.wpml</code> 은 원 템플릿 현장의
+        실행 웨이포인트를 그대로 담고 있습니다 (임무 폴리곤은 <code>template.kml</code> 에만
+        반영됩니다). <b>DJI Pilot 2 에서 불러와 경로를 재생성한 뒤 비행하십시오</b> —
+        웨이라인을 직접 실행하면 원 현장을 비행합니다.
+        검증: <code>python src/core/inspector.py [KMZ경로]</code>
     </div>
 
     <table>
