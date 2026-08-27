@@ -21,7 +21,8 @@ import customtkinter as ctk
 # 내부 로직 호출
 from src.core.generator import (batch_process_inputs, validate_mission_config,
                                 parse_polygon_coords_from_kml, read_gpkg_layer,
-                                polygon_features, polygon_coords_from_geoms)
+                                polygon_features, polygon_coords_from_geoms,
+                                resolve_input_files, INPUT_SEP)
 from src.core import enums, gpkg
 from src.gui import theme as T
 
@@ -202,6 +203,8 @@ TRANSLATIONS = {
         "out": "출력",
         "name": "파일명",
         "browse": "찾기",
+        "browse_dir": "폴더",
+        "browse_files": "파일",
         "load_fields": "↻ 로드",
         "model": "드론 모델",
         "alt_m": "임무 고도 (m)",
@@ -236,7 +239,7 @@ TRANSLATIONS = {
         "done": "완료",
         "scan_line": "파일 {files} · 폴리곤 {polys}",
         "scan_skipped": " · 생략 {n}",
-        "input_missing": "입력 폴더가 없습니다.",
+        "input_missing": "입력 경로가 없습니다.",
         "no_files": "입력 폴더에 처리할 파일이 없습니다: {pat}",
         "confirm_danger_t": "위험 설정",
         "confirm_danger_m": "안전 판정이 '위험'입니다.\n{msgs}\n\n그래도 실행할까요?",
@@ -265,6 +268,8 @@ TRANSLATIONS = {
         "out": "Output",
         "name": "Naming",
         "browse": "Browse",
+        "browse_dir": "Folder",
+        "browse_files": "Files",
         "load_fields": "↻ Load",
         "model": "Drone Model",
         "alt_m": "Altitude (m)",
@@ -299,7 +304,7 @@ TRANSLATIONS = {
         "done": "Done",
         "scan_line": "Files {files} · Polygons {polys}",
         "scan_skipped": " · skipped {n}",
-        "input_missing": "Input directory not found.",
+        "input_missing": "Input path not found.",
         "no_files": "No matching files in input directory: {pat}",
         "confirm_danger_t": "Dangerous Settings",
         "confirm_danger_m": "Safety check says DANGER.\n{msgs}\n\nRun anyway?",
@@ -624,6 +629,9 @@ class App(ctk.CTk):
     # ---- ① 데이터 ----
     def _build_data_card(self, row_idx):
         card = self._card(row_idx, "sec_data")
+        # 경로는 라벨 옆이 아니라 라벨 **아래** 전체 폭을 쓴다 — 옆에 두면 버튼에 밀려
+        # 입력칸이 좁아지고, 이 카드에서 가장 긴 값이 바로 그 경로다.
+        card.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(card, text=self._tr("fmt"), font=self.font_body,
                      text_color=T.TX_BODY).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
@@ -636,37 +644,51 @@ class App(ctk.CTk):
                                border_width=1).grid(row=1, column=1, columnspan=2,
                                                     sticky="ew", padx=(0, 14), pady=4)
 
+        # ---- 입력: 폴더 전체를 훑거나, 파일을 직접 고른다 ----
         ctk.CTkLabel(card, text=self._tr("in"), font=self.font_body,
-                     text_color=T.TX_BODY).grid(row=2, column=0, sticky="w", padx=(14, 8), pady=4)
-        self.ent_input_dir = T.entry(card, textvariable=self.var_input_dir)
-        self.ent_input_dir.grid(row=2, column=1, sticky="ew", pady=4)
+                     text_color=T.TX_BODY).grid(row=2, column=0, columnspan=3, sticky="w",
+                                                padx=14, pady=(8, 0))
+        in_row = ctk.CTkFrame(card, fg_color="transparent")
+        in_row.grid(row=3, column=0, columnspan=3, sticky="ew", padx=14, pady=(2, 4))
+        self.ent_input_dir = T.entry(in_row, textvariable=self.var_input_dir)
+        self.ent_input_dir.pack(side="left", fill="x", expand=True)
         self._watch_path_entry(self.ent_input_dir, self.var_input_dir)
-        T.quiet(card, text=self._tr("browse"), width=52,
-                command=lambda: self._choose_dir(self.var_input_dir)).grid(row=2, column=2, padx=(6, 14), pady=4)
+        T.quiet(in_row, text=self._tr("browse_dir"), width=48,
+                command=lambda: self._choose_dir(self.var_input_dir)).pack(side="left", padx=(6, 0))
+        T.quiet(in_row, text=self._tr("browse_files"), width=48,
+                command=self._choose_input_files).pack(side="left", padx=(4, 0))
 
+        # ---- 출력 ----
         ctk.CTkLabel(card, text=self._tr("out"), font=self.font_body,
-                     text_color=T.TX_BODY).grid(row=3, column=0, sticky="w", padx=(14, 8), pady=4)
-        self.ent_out_dir = T.entry(card, textvariable=self.var_out_dir)
-        self.ent_out_dir.grid(row=3, column=1, sticky="ew", pady=4)
+                     text_color=T.TX_BODY).grid(row=4, column=0, columnspan=3, sticky="w",
+                                                padx=14, pady=(4, 0))
+        out_row = ctk.CTkFrame(card, fg_color="transparent")
+        out_row.grid(row=5, column=0, columnspan=3, sticky="ew", padx=14, pady=(2, 4))
+        self.ent_out_dir = T.entry(out_row, textvariable=self.var_out_dir)
+        self.ent_out_dir.pack(side="left", fill="x", expand=True)
         self._watch_path_entry(self.ent_out_dir, self.var_out_dir)
-        T.quiet(card, text=self._tr("browse"), width=52,
-                command=lambda: self._choose_dir(self.var_out_dir)).grid(row=3, column=2, padx=(6, 14), pady=4)
+        T.quiet(out_row, text=self._tr("browse"), width=48,
+                command=lambda: self._choose_dir(self.var_out_dir)).pack(side="left", padx=(6, 0))
 
-        ctk.CTkLabel(card, text=self._tr("name"), font=self.font_body,
-                     text_color=T.TX_BODY).grid(row=4, column=0, sticky="w", padx=(14, 8), pady=4)
-        self.cb_naming = T.option(card, variable=self.var_naming_field,
+        # ---- 파일명 필드 ----
+        name_row = ctk.CTkFrame(card, fg_color="transparent")
+        name_row.grid(row=6, column=0, columnspan=3, sticky="ew", padx=14, pady=(6, 0))
+        ctk.CTkLabel(name_row, text=self._tr("name"), font=self.font_body,
+                     text_color=T.TX_BODY).pack(side="left", padx=(0, 8))
+        T.quiet(name_row, text=self._tr("load_fields"), width=52,
+                command=self._refresh_naming_fields).pack(side="right")
+        self.cb_naming = T.option(name_row, variable=self.var_naming_field,
                                   values=self._naming_values)
-        self.cb_naming.grid(row=4, column=1, sticky="ew", pady=4)
-        T.quiet(card, text=self._tr("load_fields"), width=52,
-                command=self._refresh_naming_fields).grid(row=4, column=2, padx=(6, 14), pady=4)
+        self.cb_naming.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
         # 고른 필드가 파일명으로 쓸 만한지 — 고르는 자리에서 바로 보인다. 개수는 모노스페이스.
         self.lbl_field_quality = ctk.CTkLabel(card, text="", font=T.mono(12),
                                               text_color=T.TX_MUTED, anchor="w")
-        self.lbl_field_quality.grid(row=5, column=1, columnspan=2, sticky="w", pady=(0, 2))
+        self.lbl_field_quality.grid(row=7, column=0, columnspan=3, sticky="w",
+                                    padx=14, pady=(2, 0))
         self._update_field_quality()
 
-        self._pad_bottom(card, 6)
+        self._pad_bottom(card, 8)
 
     # ---- ② 미션 ----
     def _build_mission_card(self, row_idx):
@@ -865,19 +887,7 @@ class App(ctk.CTk):
         self.map_view.delete_all_path()
         self.map_view.delete_all_polygon()
 
-        input_dir = Path(self.var_input_dir.get())
-        if not input_dir.exists() or not input_dir.is_dir():
-            self._set_scan_label("0", 0)
-            return
-
-        fmt = self.var_input_format.get()
-        if fmt == 'gpkg':
-            files = sorted(input_dir.glob('*.gpkg'))
-        elif fmt == 'kml':
-            files = sorted(list(input_dir.glob('*.kml')) + list(input_dir.glob('*.kmz')))
-        else:
-            files = sorted(list(input_dir.glob('*.gpkg')) + list(input_dir.glob('*.kml'))
-                           + list(input_dir.glob('*.kmz')))
+        files = self._input_files()
         if not files:
             self._set_scan_label("0", 0)
             return
@@ -968,6 +978,24 @@ class App(ctk.CTk):
             self._map_style = choice          # 재생성에서 살아남도록 기억(B3)
             self.map_view.set_tile_server(info[0], max_zoom=info[1])
 
+    def _choose_input_files(self):
+        """파일을 직접 고른다. 여러 개면 세미콜론으로 이어 한 칸에 담는다."""
+        fmt = (self.var_input_format.get() or 'auto').strip().lower()
+        types = {
+            'gpkg': [("GeoPackage", "*.gpkg")],
+            'kml': [("KML", "*.kml")],
+        }.get(fmt, [("GPKG · KML", "*.gpkg *.kml"), ("GeoPackage", "*.gpkg"), ("KML", "*.kml")])
+        types = types + [("모든 파일", "*.*")]
+
+        current = (self.var_input_dir.get() or "").strip().split(INPUT_SEP)[0]
+        start = current if current and Path(current).exists() else str(BASE.parent.parent)
+        if Path(start).is_file():
+            start = str(Path(start).parent)
+
+        picked = filedialog.askopenfilenames(initialdir=start, filetypes=types)
+        if picked:
+            self.var_input_dir.set(INPUT_SEP.join(picked))
+
     def _choose_dir(self, var):
         current = (var.get() or "").strip()
         start = current if current and Path(current).exists() else str(BASE.parent.parent)
@@ -976,26 +1004,36 @@ class App(ctk.CTk):
             var.set(d)
 
     # ---- 파일명 필드 ----
+    def _input_files(self):
+        """입력 지정(폴더·파일·세미콜론 목록)에서 처리 대상 파일 목록. 엔진과 같은 해석이다."""
+        spec = (self.var_input_dir.get() or '').strip()
+        if not spec:
+            return []
+        try:
+            return resolve_input_files(spec, self.var_input_format.get() or 'auto')
+        except Exception:
+            return []
+
     def _refresh_naming_fields(self):
-        fmt = (self.var_input_format.get() or '').strip().lower()
-        input_dir = Path((self.var_input_dir.get() or '').strip())
-        if not input_dir.exists():
+        files = self._input_files()
+        if not files:
             messagebox.showerror("Error", self._tr("input_missing"))
             return
 
-        if fmt in ('auto', ''):
-            if any(input_dir.glob('*.gpkg')):
-                fmt = 'gpkg'
-            elif any(input_dir.glob('*.kml')):
-                fmt = 'kml'
-            else:
-                messagebox.showwarning("Warning", self._tr("no_files").format(pat="*.gpkg, *.kml"))
-                return
+        gpkgs = [f for f in files if f.suffix.lower() == '.gpkg']
+        kmls = [f for f in files if f.suffix.lower() == '.kml']
+        fmt = (self.var_input_format.get() or '').strip().lower()
+        if fmt not in ('gpkg', 'kml'):
+            # auto 는 실제로 있는 것을 따른다 — 없는 포맷을 가정하지 않는다
+            fmt = 'gpkg' if gpkgs else ('kml' if kmls else '')
+        if not fmt:
+            messagebox.showwarning("Warning", self._tr("no_files").format(pat="*.gpkg, *.kml"))
+            return
 
         if fmt == 'gpkg':
-            candidates, dropped = self._get_gpkg_fields(input_dir, None)
+            candidates, dropped = self._get_gpkg_fields(gpkgs, None)
         else:
-            candidates, dropped = self._get_kml_fields(input_dir), []
+            candidates, dropped = self._get_kml_fields(kmls), []
 
         if not candidates:
             # 가짜 후보를 만들어 넣지 않는다(B5) — 자동 명명으로 안내
@@ -1015,13 +1053,13 @@ class App(ctk.CTk):
             msg += chr(10) * 2 + self._tr("fields_dropped").format(names=", ".join(dropped))
         messagebox.showinfo("Done", msg)
 
-    def _get_gpkg_fields(self, input_dir: Path, layer: 'str | None'):
+    def _get_gpkg_fields(self, files: list, layer: 'str | None'):
         """(후보 필드, 전부 비어서 제외한 필드) 를 돌려주고 품질을 기억한다.
 
         전부 비어 있는 필드는 **후보에서 뺀다** — 고르면 산출물이 하나만 남으므로
         (실측: 83필지 중 82개 유실) 목록에 두는 것 자체가 함정이다.
         """
-        files = list(input_dir.glob('*.gpkg'))
+        files = list(files)
         if not files:
             return [], []
         intersection = None
@@ -1063,8 +1101,8 @@ class App(ctk.CTk):
             self.lbl_field_quality.configure(
                 text=self._tr("field_quality_ok").format(n=st.unique), text_color=T.TX_MUTED)
 
-    def _get_kml_fields(self, input_dir: Path) -> list:
-        files = list(input_dir.glob('*.kml'))
+    def _get_kml_fields(self, files: list) -> list:
+        files = list(files)
         if not files:
             return []
         candidates = set()
@@ -1139,13 +1177,13 @@ class App(ctk.CTk):
             return
 
         # 사전 점검 — 스레드에 들어가기 전에 사람이 고칠 수 있는 것은 여기서 잡는다(B13)
-        input_dir = Path((self.var_input_dir.get() or '').strip())
-        if not input_dir.exists() or not input_dir.is_dir():
+        spec = (self.var_input_dir.get() or '').strip()
+        if not spec or not any(Path(x.strip()).exists() for x in spec.split(INPUT_SEP) if x.strip()):
             messagebox.showerror("Error", self._tr("input_missing"))
             return
-        fmt = self.var_input_format.get()
-        pats = {'gpkg': ['*.gpkg'], 'kml': ['*.kml']}.get(fmt, ['*.gpkg', '*.kml'])
-        if not any(any(input_dir.glob(p)) for p in pats):
+        if not self._input_files():
+            fmt = self.var_input_format.get()
+            pats = {'gpkg': ['*.gpkg'], 'kml': ['*.kml']}.get(fmt, ['*.gpkg', '*.kml'])
             messagebox.showerror("Error", self._tr("no_files").format(pat=", ".join(pats)))
             return
 
@@ -1171,7 +1209,7 @@ class App(ctk.CTk):
         sys.stderr = qredir   # traceback 도 로그창으로(B7)
         try:
             batch_process_inputs(
-                missions_dir=Path(values["input_dir"]),
+                missions_dir=values["input_dir"],   # 폴더·파일·세미콜론 목록 — 엔진이 해석한다
                 template_path=Path(self.var_template.get()),
                 waylines_path=Path(self.var_waylines.get()),
                 out_dir=Path(values["out_dir"]),
