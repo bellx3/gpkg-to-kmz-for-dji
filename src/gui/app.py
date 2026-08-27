@@ -27,8 +27,11 @@ from src.gui import theme as T
 
 try:
     import tkintermapview
+    from src.gui import maptiles
+    maptiles.install()   # 타일마다 새 연결을 열던 것을 세션 재사용 + 디스크 캐시로 (실측 1.56s → 0.08s)
 except ImportError:
     tkintermapview = None
+    maptiles = None
 
 BASE = Path(__file__).parent
 
@@ -56,6 +59,9 @@ MAP_PROVIDERS = {
     "OpenStreetMap": ("https://a.tile.openstreetmap.org/{z}/{x}/{y}.png", 19),
     "VWorld Base": ("https://xdworld.vworld.kr/2d/Base/service/{z}/{x}/{y}.png", 19),
 }
+
+# 사이드바 폭 — 입력·출력 경로가 들어가는 자리라 좁으면 경로가 잘린다.
+SIDEBAR_W = 400
 
 PREVIEW_MAX_FILES = 20     # 메인 루프를 오래 막으면 타일 로딩까지 굶는다 (docs/gui-audit.md)
 PREVIEW_MAX_FEATURES = 150
@@ -241,6 +247,7 @@ TRANSLATIONS = {
         "preset_loaded": "프리셋을 불러왔습니다.",
         "preset_saved": "프리셋을 저장했습니다.",
         "already_running": "이미 실행 중입니다.",
+        "preset_hint": "위 ①②③ 설정값 묶음입니다. 현장·기체별로 저장해 두고 다음 배치에서 그대로 불러옵니다.",
     },
     "en": {
         "app_title": "SkyMission Builder",
@@ -303,6 +310,7 @@ TRANSLATIONS = {
         "preset_loaded": "Preset loaded.",
         "preset_saved": "Preset saved.",
         "already_running": "Already running.",
+        "preset_hint": "The whole set of values in sections 1-3. Save one per site or aircraft, then load it for the next batch.",
     }
 }
 
@@ -472,8 +480,8 @@ class App(ctk.CTk):
     # UI 구성 — 전역 헤더 / 사이드바(워크플로) / 지도(주역) / 로그
     # --------------------------------------------------------------------------
     def _build_ui(self):
-        self.font_section = T.font(13, "bold")
-        self.font_body = T.font(12)
+        self.font_section = T.font(14, "bold")
+        self.font_body = T.font(13)
         self.font_brand = T.font(17, "bold")
 
         self.grid_columnconfigure(1, weight=1)
@@ -488,20 +496,20 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(header, text=self._tr("app_title"), font=self.font_brand,
                      text_color=T.TX_PRIMARY).pack(side="left", padx=(16, 10), pady=8)
-        ctk.CTkLabel(header, text=self._tr("tagline"), font=T.mono(11),
-                     text_color=T.TX_FAINT).pack(side="left", pady=8)
+        ctk.CTkLabel(header, text=self._tr("tagline"), font=T.mono(12),
+                     text_color=T.TX_MUTED).pack(side="left", pady=8)
         T.ghost(header, text="EN / KR", width=64, height=T.H_SM,
                 command=self._toggle_language).pack(side="right", padx=16)
-        ctk.CTkLabel(header, textvariable=self.var_status, font=T.font(12),
-                     text_color=T.TX_MUTED).pack(side="right", padx=10)
+        ctk.CTkLabel(header, textvariable=self.var_status, font=T.font(13),
+                     text_color=T.TX_BODY).pack(side="right", padx=10)
 
         # ---- [Left Sidebar] 설정 스크롤 + 하단 고정 실행 존 ----
-        side_wrap = ctk.CTkFrame(self, width=330, corner_radius=0, fg_color=T.SURFACE_1)
+        side_wrap = ctk.CTkFrame(self, width=SIDEBAR_W, corner_radius=0, fg_color=T.SURFACE_1)
         side_wrap.grid(row=1, column=0, rowspan=2, sticky="nsew")
         side_wrap.grid_rowconfigure(0, weight=1)
         side_wrap.grid_columnconfigure(0, weight=1)
 
-        self.sidebar = ctk.CTkScrollableFrame(side_wrap, width=330, corner_radius=0,
+        self.sidebar = ctk.CTkScrollableFrame(side_wrap, width=SIDEBAR_W, corner_radius=0,
                                               fg_color=T.SURFACE_1,
                                               scrollbar_button_color=T.NAVY_700,
                                               scrollbar_button_hover_color=T.NAVY_600)
@@ -560,21 +568,28 @@ class App(ctk.CTk):
         # 38px 헤더 행 — 시스템의 카드 헤더 규격. 라틴 마이크로 라벨은 대문자.
         head = ctk.CTkFrame(self.log_frame, fg_color="transparent", height=38)
         head.pack(fill="x", padx=16, pady=(8, 0))
-        ctk.CTkLabel(head, text=self._tr("system_logs"), font=T.font(12, "bold"),
-                     text_color=T.TX_MUTED).pack(side="left")
-        self.btn_report = T.quiet(head, text=self._tr("open_report"), width=110,
-                                  height=T.H_SM, command=self._open_report)
-        self.btn_report.pack(side="right")
-        self._refresh_report_button()
+        ctk.CTkLabel(head, text=self._tr("system_logs"), font=T.font(13, "bold"),
+                     text_color=T.TX_BODY).pack(side="left")
 
         # 로그는 우물이다 — 캔버스 톤 바닥 + 헤어라인. 값은 모노스페이스.
-        self.txt_log = ctk.CTkTextbox(self.log_frame, font=T.mono(11),
+        self.txt_log = ctk.CTkTextbox(self.log_frame, font=T.mono(12),
                                       corner_radius=T.R_CARD, fg_color=T.BG_CANVAS,
                                       border_width=1, border_color=T.BORDER_SUBTLE,
                                       text_color=T.TX_BODY,
                                       scrollbar_button_color=T.NAVY_700,
                                       scrollbar_button_hover_color=T.NAVY_600)
         self.txt_log.pack(fill="both", expand=True, padx=16, pady=(4, 12))
+
+    def _watch_path_entry(self, widget, var):
+        """긴 경로는 앞이 아니라 뒤가 정보다 — 값이 바뀌면 끝으로 스크롤하고 전체는 툴팁으로 보인다."""
+        def show_tail(*_):
+            try:
+                widget.xview_moveto(1.0)
+            except Exception:
+                pass
+        var.trace_add("write", lambda *a: self.after(1, show_tail))
+        self.after(50, show_tail)
+        T.tooltip(widget, var.get)
 
     # ---- 카드 헬퍼 ----
     def _card(self, row_idx, title_key):
@@ -591,7 +606,7 @@ class App(ctk.CTk):
     def _entry_row(self, card, r, label_key, var):
         # 필드 라벨은 문장이 아니라 명사다.
         ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=r, column=0, sticky="w",
+                     text_color=T.TX_BODY).grid(row=r, column=0, sticky="w",
                                                  padx=(14, 8), pady=4)
         # 설정값은 측정값이다 — 모노스페이스로 읽는다.
         T.entry(card, textvariable=var, font=T.mono(12)).grid(
@@ -607,7 +622,7 @@ class App(ctk.CTk):
         card = self._card(row_idx, "sec_data")
 
         ctk.CTkLabel(card, text=self._tr("fmt"), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
+                     text_color=T.TX_BODY).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
         ctk.CTkSegmentedButton(card, values=["gpkg", "kml", "auto"],
                                variable=self.var_input_format, font=T.font(12),
                                corner_radius=T.R_CONTROL, height=T.H_MD - 6,
@@ -618,19 +633,23 @@ class App(ctk.CTk):
                                                     sticky="ew", padx=(0, 14), pady=4)
 
         ctk.CTkLabel(card, text=self._tr("in"), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=2, column=0, sticky="w", padx=(14, 8), pady=4)
-        T.entry(card, textvariable=self.var_input_dir).grid(row=2, column=1, sticky="ew", pady=4)
+                     text_color=T.TX_BODY).grid(row=2, column=0, sticky="w", padx=(14, 8), pady=4)
+        self.ent_input_dir = T.entry(card, textvariable=self.var_input_dir)
+        self.ent_input_dir.grid(row=2, column=1, sticky="ew", pady=4)
+        self._watch_path_entry(self.ent_input_dir, self.var_input_dir)
         T.quiet(card, text=self._tr("browse"), width=52,
                 command=lambda: self._choose_dir(self.var_input_dir)).grid(row=2, column=2, padx=(6, 14), pady=4)
 
         ctk.CTkLabel(card, text=self._tr("out"), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=3, column=0, sticky="w", padx=(14, 8), pady=4)
-        T.entry(card, textvariable=self.var_out_dir).grid(row=3, column=1, sticky="ew", pady=4)
+                     text_color=T.TX_BODY).grid(row=3, column=0, sticky="w", padx=(14, 8), pady=4)
+        self.ent_out_dir = T.entry(card, textvariable=self.var_out_dir)
+        self.ent_out_dir.grid(row=3, column=1, sticky="ew", pady=4)
+        self._watch_path_entry(self.ent_out_dir, self.var_out_dir)
         T.quiet(card, text=self._tr("browse"), width=52,
                 command=lambda: self._choose_dir(self.var_out_dir)).grid(row=3, column=2, padx=(6, 14), pady=4)
 
         ctk.CTkLabel(card, text=self._tr("name"), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=4, column=0, sticky="w", padx=(14, 8), pady=4)
+                     text_color=T.TX_BODY).grid(row=4, column=0, sticky="w", padx=(14, 8), pady=4)
         self.cb_naming = T.option(card, variable=self.var_naming_field,
                                   values=self._naming_values)
         self.cb_naming.grid(row=4, column=1, sticky="ew", pady=4)
@@ -638,8 +657,8 @@ class App(ctk.CTk):
                 command=self._refresh_naming_fields).grid(row=4, column=2, padx=(6, 14), pady=4)
 
         # 고른 필드가 파일명으로 쓸 만한지 — 고르는 자리에서 바로 보인다. 개수는 모노스페이스.
-        self.lbl_field_quality = ctk.CTkLabel(card, text="", font=T.mono(11),
-                                              text_color=T.TX_FAINT, anchor="w")
+        self.lbl_field_quality = ctk.CTkLabel(card, text="", font=T.mono(12),
+                                              text_color=T.TX_MUTED, anchor="w")
         self.lbl_field_quality.grid(row=5, column=1, columnspan=2, sticky="w", pady=(0, 2))
         self._update_field_quality()
 
@@ -650,7 +669,7 @@ class App(ctk.CTk):
         card = self._card(row_idx, "sec_mission")
 
         ctk.CTkLabel(card, text=self._tr("model"), font=self.font_body,
-                     text_color=T.TX_MUTED).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
+                     text_color=T.TX_BODY).grid(row=1, column=0, sticky="w", padx=(14, 8), pady=4)
         self.cb_drone = T.option(card, variable=self.var_drone_model,
                                  values=enums.get_supported_drone_models())
         self.cb_drone.grid(row=1, column=1, columnspan=2, sticky="ew", padx=(0, 14), pady=4)
@@ -664,7 +683,7 @@ class App(ctk.CTk):
     def _build_advanced_section(self, row_idx):
         self.btn_adv = ctk.CTkButton(self.sidebar, text="", command=self._toggle_advanced,
                                      fg_color="transparent", hover_color=T.ACCENT_QUIET,
-                                     text_color=T.TX_MUTED, anchor="w", height=T.H_MD,
+                                     text_color=T.TX_BODY, anchor="w", height=T.H_MD,
                                      font=self.font_section, corner_radius=T.R_CARD,
                                      border_width=1, border_color=T.BORDER_SUBTLE)
         self.btn_adv.grid(row=row_idx, column=0, padx=16, pady=(12, 0), sticky="ew")
@@ -686,7 +705,7 @@ class App(ctk.CTk):
             ("overlap_lidar", self.var_overlap_lidar_h, self.var_overlap_lidar_w),
         ], start=6):
             ctk.CTkLabel(card, text=self._tr(label_key), font=self.font_body,
-                         text_color=T.TX_MUTED).grid(row=r, column=0, sticky="w",
+                         text_color=T.TX_BODY).grid(row=r, column=0, sticky="w",
                                                      padx=(14, 8), pady=4)
             sub = ctk.CTkFrame(card, fg_color="transparent")
             sub.grid(row=r, column=1, columnspan=2, sticky="w", pady=4)
@@ -742,12 +761,23 @@ class App(ctk.CTk):
                                                  height=T.H_MD, text_color=T.STATUS["idle"][0])
         self.btn_safety_indicator.pack(side="left", fill="x", expand=True, pady=2)
 
-        self.lbl_metrics = ctk.CTkLabel(frm, text="-", font=T.mono(11), text_color=T.TX_FAINT)
+        self.lbl_metrics = ctk.CTkLabel(frm, text="-", font=T.mono(12), text_color=T.TX_MUTED)
         self.lbl_metrics.pack(anchor="w", pady=(6, 10))
 
         self.btn_run = T.primary(frm, text=self._tr("run_batch"), command=self._on_run)
         self.btn_run.pack(fill="x", pady=(0, 8))
 
+        # 리포트는 실행의 결과다 — 실행 버튼 옆에 있어야 찾는다(전에는 로그 패널 구석이었다).
+        self.btn_report = T.quiet(frm, text=self._tr("open_report"),
+                                  command=self._open_report)
+        self.btn_report.pack(fill="x", pady=(0, 12))
+        self._refresh_report_button()
+
+        # 프리셋 — 무엇을 불러오고 저장하는지 라벨만으로는 알 수 없어 설명을 붙인다.
+        T.micro(frm, "preset").pack(anchor="w", pady=(0, 2))
+        ctk.CTkLabel(frm, text=self._tr("preset_hint"), font=T.font(11),
+                     text_color=T.TX_MUTED, anchor="w", justify="left",
+                     wraplength=SIDEBAR_W - 60).pack(anchor="w", pady=(0, 6))
         sub = ctk.CTkFrame(frm, fg_color="transparent")
         sub.pack(fill="x")
         T.quiet(sub, text=self._tr("load_preset"), width=100,
@@ -1019,18 +1049,18 @@ class App(ctk.CTk):
             return
         name = effective_naming_field(self.var_naming_field.get())
         if name is None:
-            self.lbl_field_quality.configure(text=self._tr("field_quality_auto"), text_color=T.TX_FAINT)
+            self.lbl_field_quality.configure(text=self._tr("field_quality_auto"), text_color=T.TX_MUTED)
             return
         st = getattr(self, "_field_stats", {}).get(name)
         if st is None:
-            self.lbl_field_quality.configure(text="", text_color=T.TX_FAINT)
+            self.lbl_field_quality.configure(text="", text_color=T.TX_MUTED)
         elif st.collisions:
             self.lbl_field_quality.configure(
                 text=self._tr("field_quality_dup").format(d=st.collisions),
                 text_color=T.STATUS["warning"][0])
         else:
             self.lbl_field_quality.configure(
-                text=self._tr("field_quality_ok").format(n=st.unique), text_color=T.TX_FAINT)
+                text=self._tr("field_quality_ok").format(n=st.unique), text_color=T.TX_MUTED)
 
     def _get_kml_fields(self, input_dir: Path) -> list:
         files = list(input_dir.glob('*.kml'))

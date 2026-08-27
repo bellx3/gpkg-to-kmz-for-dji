@@ -91,7 +91,10 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
   버퍼·단순화는 **재투영 전에 원본 좌표계에서** 한다 — 지리 좌표계면 미터를 도로 환산(÷111111)한다.
 - **`enums.py`** — 기체/페이로드의 DJI 정수 enum. WPML 이 모델명이 아니라 숫자를 요구한다. `m300*`/`m350*` 는 접두사 매칭으로 H20 을 기본 페이로드로 가정한다.
 - **`validator.py`** — 안전·품질 판정. GSD `(H·Sw)/(F·Iw)`, 모션 블러 `V·S`. **블러 > GSD 면 danger, GSD 의 50% 초과면 warning.** 카메라 사양(`CAMERA_SPECS`)은 4기종만 있고 나머지는 Mavic 3E 로 폴백한다 — 폴백 시 `metrics['spec_approx']=True` 와 근사 안내 메시지가 함께 나가고, GUI 안전 카드에도 `(≈mavic3e 사양)` 이 붙는다. 없는 사양을 지어내지 말 것 — 잘못된 GSD 는 잘못된 안전 판정이 된다.
-- **`reporter.py`** — 배치 결과를 단일 HTML 리포트로. 템플릿이 f-string 이라 CSS 중괄호가 `{{ }}` 로 이스케이프되어 있다.
+- **`reporter.py`** — 배치 결과를 단일 HTML 리포트로. E8IGHT 디자인시스템(다크 네이비 · KPI 타일 ·
+  36px 행 테이블 · 모노 tabular 수치)을 따르고, 색은 `:root` 커스텀 프로퍼티로만 참조한다.
+  템플릿이 `str.format` 이라 CSS 중괄호가 `{{ }}` 로 이스케이프되어 있다. 단일 HTML 이어야 하므로
+  CSS 는 인라인이고 폰트 CDN 에는 시스템 폴백이 붙는다. 파일명·메시지는 `html.escape` 를 거친다.
 - **`inspector.py`** — 위 참조. CLI 이지만 함수(`load_kmz`·`geo_check` 등)로도 임포트된다.
   KML/WPML 값 나란히 출력에 더해 **임무 폴리곤 vs 실행 웨이포인트의 지리 간극**을 재서
   200m 초과면 경고한다 — waylines.wpml 은 원 템플릿 현장의 웨이포인트가 그대로 실리는
@@ -124,6 +127,10 @@ E8IGHT 디자인시스템 재구성 기록은 `docs/gui-e8ight-restyle.md`. 알�
 - 변수 trace 는 `__init__` 에서 한 번만 건다 — 언어 토글 재생성에서 `_bind_events` 를
   다시 부르면 트리거가 중복된다.
 
+- **지도 타일은 `src/gui/maptiles.py` 가 가속한다** — `tkintermapview` 는 타일마다 새 연결을 열어
+  25개 스레드가 TLS 핸드셰이크를 반복한다. 세션 재사용 + sqlite 디스크 캐시로 대체했다
+  (실측 24타일 1.56s → 0.08s). `map_widget` 의 `requests` 심볼을 갈아 끼우는 방식이라
+  `requests.exceptions` 도 함께 물려줘야 한다. 캐시는 `~/.skymission/tilecache.sqlite`.
 - **경로는 프로젝트 루트 기준으로 유도된다** — `BASE.parent.parent / "input"`. `src/gui/` 에서 두 단계 올라간다. 파일을 옮기면 기본 경로가 조용히 어긋난다.
 - **배치는 스레드로 돌고 로그는 큐로 온다** — `LogRedirector` 가 `sys.stdout`/`sys.stderr` 를 가로채 큐에 넣고 UI 가 폴링한다. core 쪽 `print()` 와 traceback 이 그대로 로그창에 뜬다. tk 변수는 메인 스레드에서 `_collect_values()` 로 모아 워커에 딕셔너리로 넘긴다.
 - **언어 토글은 UI 를 통째로 다시 만든다**(`_toggle_language` → `_rebuild_full_ui`). 위젯 상태를 들고 있는 코드를 추가할 때 재생성에서 살아남는지 확인할 것 — 살아남아야 하는 상태(로그 내용·파일명 후보·지도 스타일·실행 버튼 상태)는 위젯 밖 속성에 두고, `tests/test_gui_smoke.py` 가 왕복을 검사한다.
