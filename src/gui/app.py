@@ -216,8 +216,8 @@ TRANSLATIONS = {
         "overlap_cam": "중첩 Cam H/W (%)",
         "overlap_lidar": "중첩 Lidar H/W (%)",
         "run_batch": "미션 생성 실행",
-        "load_preset": "불러오기",
-        "save_preset": "저장하기",
+        "load_preset": "프리셋 불러오기",
+        "save_preset": "프리셋 저장",
         "system_logs": "작업 로그",
         "open_report": "리포트 열기",
         "refresh_preview": "↻ 미리보기",
@@ -741,9 +741,7 @@ class App(ctk.CTk):
     # ---- 실행 존: 안전 판정은 결정하는 자리에서 보여야 한다 ----
     def _build_run_zone(self):
         frm = ctk.CTkFrame(self.action_bar, fg_color="transparent")
-        frm.pack(fill="x", padx=16, pady=(12, 14))
-
-        T.micro(frm, "safety").pack(anchor="w", pady=(0, 6))
+        frm.pack(fill="x", padx=16, pady=(10, 12))
 
         # 안전 판정은 배지다 — 솔리드 채움이 아니라 상태색 틴트 + 좌측 상태 레일.
         # 상태색은 의미가 고정돼 있어 강조 용도로 전용되지 않는다.
@@ -757,33 +755,32 @@ class App(ctk.CTk):
                                         corner_radius=0, fg_color=T.STATUS["idle"][0])
         self.safety_rail.pack(side="left", fill="y", padx=(0, 10))
         self.btn_safety_indicator = ctk.CTkLabel(self.safety_card, text=self._tr("checking"),
-                                                 font=T.font(12, "bold"), anchor="w",
+                                                 font=T.font(13, "bold"), anchor="w",
                                                  height=T.H_MD, text_color=T.STATUS["idle"][0])
-        self.btn_safety_indicator.pack(side="left", fill="x", expand=True, pady=2)
+        self.btn_safety_indicator.pack(side="left", pady=2)
 
-        self.lbl_metrics = ctk.CTkLabel(frm, text="-", font=T.mono(12), text_color=T.TX_MUTED)
-        self.lbl_metrics.pack(anchor="w", pady=(6, 10))
+        # 지표는 판정과 같은 줄에 둔다 — 한 줄을 아끼고, 판정의 근거는 판정 옆에 있어야 읽힌다.
+        self.lbl_metrics = ctk.CTkLabel(self.safety_card, text="-", font=T.mono(12),
+                                        anchor="e", height=T.H_MD, text_color=T.TX_MUTED)
+        self.lbl_metrics.pack(side="right", padx=(8, 10), pady=2)
 
         self.btn_run = T.primary(frm, text=self._tr("run_batch"), command=self._on_run)
-        self.btn_run.pack(fill="x", pady=(0, 8))
+        self.btn_run.pack(fill="x", pady=(8, 6))
 
-        # 리포트는 실행의 결과다 — 실행 버튼 옆에 있어야 찾는다(전에는 로그 패널 구석이었다).
-        self.btn_report = T.quiet(frm, text=self._tr("open_report"),
-                                  command=self._open_report)
-        self.btn_report.pack(fill="x", pady=(0, 12))
-        self._refresh_report_button()
-
-        # 프리셋 — 무엇을 불러오고 저장하는지 라벨만으로는 알 수 없어 설명을 붙인다.
-        T.micro(frm, "preset").pack(anchor="w", pady=(0, 2))
-        ctk.CTkLabel(frm, text=self._tr("preset_hint"), font=T.font(11),
-                     text_color=T.TX_MUTED, anchor="w", justify="left",
-                     wraplength=SIDEBAR_W - 60).pack(anchor="w", pady=(0, 6))
+        # 리포트(실행의 결과)와 프리셋(설정 묶음)을 한 줄에 둔다. 프리셋이 무엇인지는
+        # 라벨만으로 알 수 없으므로 설명을 툴팁으로 붙인다 — 상시 표시하면 두 줄을 먹는다.
         sub = ctk.CTkFrame(frm, fg_color="transparent")
         sub.pack(fill="x")
-        T.quiet(sub, text=self._tr("load_preset"), width=100,
-                command=self._on_load_preset).pack(side="left", expand=True, fill="x", padx=(0, 3))
-        T.quiet(sub, text=self._tr("save_preset"), width=100,
-                command=self._on_save_preset).pack(side="left", expand=True, fill="x", padx=(3, 0))
+        self.btn_report = T.quiet(sub, text=self._tr("open_report"), width=100,
+                                  height=T.H_SM, command=self._open_report)
+        self.btn_report.pack(side="left", expand=True, fill="x", padx=(0, 3))
+        self._refresh_report_button()
+
+        for key, cmd in (("load_preset", self._on_load_preset),
+                         ("save_preset", self._on_save_preset)):
+            b = T.quiet(sub, text=self._tr(key), width=100, height=T.H_SM, command=cmd)
+            b.pack(side="left", expand=True, fill="x", padx=(3, 0))
+            T.tooltip(b, lambda: self._tr("preset_hint"))
 
     def _bind_events(self):
         """변수 trace 는 변수와 함께 살아남으므로 최초 1회만 건다 (재생성 시 재호출 금지 — 중복 트리거)."""
