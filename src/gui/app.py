@@ -686,8 +686,9 @@ class App(ctk.CTk):
         color = {'safe': COL_SAFE, 'warning': COL_WARN, 'danger': COL_DANGER}.get(status, 'gray')
         self.btn_safety_indicator.configure(
             text=f"{self._tr('status_prefix')}{self._tr(status)}", fg_color=color)
+        approx = f" (≈{metrics.get('spec_model')} 사양)" if metrics.get('spec_approx') else ""
         self.lbl_metrics.configure(
-            text=f"GSD {metrics.get('gsd', '-')}cm · Blur {metrics.get('blur', '-')}cm")
+            text=f"GSD {metrics.get('gsd', '-')}cm · Blur {metrics.get('blur', '-')}cm{approx}")
 
     # ---- 지도 미리보기 ----
     def _debounce_map_preview(self):

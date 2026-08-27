@@ -79,3 +79,10 @@ def test_collect_values_covers_run_arguments(gui):
         assert key in v
     ov = app_mod.build_overrides(v)
     assert ov["altitude"] == 150.0
+
+
+def test_metrics_label_discloses_spec_fallback(gui):
+    gui.var_drone_model.set("m300")   # 사양 미등록 기종
+    assert "≈" in gui.lbl_metrics.cget("text")
+    gui.var_drone_model.set("mavic3e")
+    assert "≈" not in gui.lbl_metrics.cget("text")

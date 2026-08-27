@@ -57,3 +57,23 @@ def test_validate_mission_altitude_at_limit_is_safe():
         'auto_flight_speed': 5
     }
     assert validate_mission(config)['status'] == 'safe'
+
+
+def test_unregistered_model_is_marked_approximate():
+    # 사양 미등록 기종의 GSD 는 mavic3e 근사값이다 — 숫자가 아니라 표시로 정직해진다
+    result = validate_mission({'drone_model': 'm300', 'altitude': 90, 'auto_flight_speed': 5})
+    assert result['metrics']['spec_approx'] is True
+    assert result['metrics']['spec_model'] == 'mavic3e'
+    assert any('근사' in m for m in result['messages'])
+
+
+def test_registered_model_is_not_marked():
+    result = validate_mission({'drone_model': 'p4r', 'altitude': 90, 'auto_flight_speed': 5})
+    assert result['metrics']['spec_approx'] is False
+    assert not any('근사' in m for m in result['messages'])
+
+
+def test_none_model_does_not_crash():
+    # 회귀: CLI 에서 --drone-model 생략 시 None.lower() 로 죽었다
+    result = validate_mission({'drone_model': None, 'altitude': 90, 'auto_flight_speed': 5})
+    assert result['status'] in ('safe', 'warning', 'danger')

@@ -43,13 +43,26 @@ CAMERA_SPECS = {
 }
 
 DEFAULT_SPEC = CAMERA_SPECS['mavic3e']
+DEFAULT_SPEC_NAME = 'mavic3e'
+
+def spec_for(drone_model) -> tuple:
+    """(카메라 사양, 근사 여부). 사양 미등록 기종은 mavic3e 로 근사한다.
+
+    지원 기체 25종 중 사양이 있는 것은 위 4종뿐이다 — 없는 사양을 지어내는 대신
+    근사임을 함께 돌려주고, 표시 계층이 그 사실을 사용자에게 보여 준다.
+    None 도 받는다(CLI 에서 --drone-model 생략 시) — 예전에는 여기서 죽었다.
+    """
+    model = (drone_model or DEFAULT_SPEC_NAME).lower()
+    if model in CAMERA_SPECS:
+        return CAMERA_SPECS[model], False
+    return DEFAULT_SPEC, True
 
 def calculate_gsd(altitude_m: float, drone_model: str) -> float:
     """
     GSD(Ground Sample Distance, cm/pixel)를 계산합니다.
     (H * Sw) / (F * Iw) * 100
     """
-    spec = CAMERA_SPECS.get(drone_model.lower(), DEFAULT_SPEC)
+    spec, _ = spec_for(drone_model)
     
     gsd = (altitude_m * spec['sensor_width']) / (spec['focal_length'] * spec['image_width'])
     return gsd * 100  # meter to cm
@@ -75,15 +88,13 @@ def validate_mission(config_dict: Dict) -> Dict:
     status = 'safe'
     messages = []
     
-    drone_model = config_dict.get('drone_model', 'mavic3e')
+    drone_model = config_dict.get('drone_model') or 'mavic3e'
     altitude = float(config_dict.get('altitude') or 50)
     velocity = float(config_dict.get('auto_flight_speed') or 5)
-    
-    # 1. GSD 계산
+
+    # 1~2. GSD / 모션 블러 계산 (사양 미등록 기종은 mavic3e 근사)
+    spec, spec_approx = spec_for(drone_model)
     gsd = calculate_gsd(altitude, drone_model)
-    
-    # 2. 모션 블러 계산
-    spec = CAMERA_SPECS.get(drone_model.lower(), DEFAULT_SPEC)
     shutter = spec['shutter_speed']
     blur = calculate_motion_blur(velocity, shutter)
     
@@ -113,13 +124,18 @@ def validate_mission(config_dict: Dict) -> Dict:
     # 5. 결과 요약
     if not messages:
         messages.append("미션 설정이 안전하며 양호한 데이터 품질이 예상됩니다.")
-        
+    if spec_approx:
+        messages.append(f"참고: {drone_model} 의 카메라 사양이 등록되지 않아 "
+                        f"GSD/블러는 {DEFAULT_SPEC_NAME} 사양으로 근사한 값입니다.")
+
     return {
         'status': status,
         'messages': messages,
         'metrics': {
             'gsd': round(gsd, 2),
             'blur': round(blur, 2),
-            'shutter': f"1/{int(1/shutter)}"
+            'shutter': f"1/{int(1/shutter)}",
+            'spec_model': DEFAULT_SPEC_NAME if spec_approx else drone_model.lower(),
+            'spec_approx': spec_approx,
         }
     }
