@@ -97,7 +97,7 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
   200m 초과면 경고한다 — waylines.wpml 은 원 템플릿 현장의 웨이포인트가 그대로 실리는
   파일이기 때문이다(Pilot 2 재생성 전제, `docs/roadmap.md` Task 4).
 
-### GUI (`src/gui/app.py`, 1,002줄)
+### GUI (`src/gui/app.py`, 1,103줄)
 
 CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-audit.md`. 알아 둘 것:
 
@@ -106,7 +106,9 @@ CustomTkinter + `tkintermapview`. 2026-08 점검·고도화 기록은 `docs/gui-
   검증된다. GUI 에 설정을 추가하면 위젯이 아니라 이 함수들과 `self._vars` 지도부터.
 - **파일명 필드의 sentinel 은 `(auto)`** — 언어 중립 값이라 토글에도 비교가 안 깨진다.
   `(` 로 시작하는 값은 엔진에 None(파일명 자동)으로 간다.
-- **실행/프리셋 버튼은 스크롤 밖 하단 고정 바에 있다** — 카드가 길어져도 RUN 은 보인다.
+- **실행 존(안전 칩·GSD·RUN·프리셋)은 스크롤 밖 하단 고정 바에 있다** — 카드가 길어져도 RUN 은 보인다.
+- **③ 상세 설정은 접이식이고 기본 접힘** — 상태는 `self._advanced_open` 으로 재생성을 건너 살아남는다.
+- 기본 지도는 **Esri Dark Gray** — CartoDB 는 2026-08 부터 익명 접근에 워터마크 타일을 반환해 뺐다.
 - 카드 안 스페이서 `CTkFrame` 에는 반드시 `width=1` — 기본 200 이 라벨 열을 밀어
   입력칸을 짜부라뜨린다(실측).
 - 변수 trace 는 `__init__` 에서 한 번만 건다 — 언어 토글 재생성에서 `_bind_events` 를

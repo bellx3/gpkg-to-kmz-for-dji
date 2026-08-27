@@ -86,3 +86,23 @@ def test_metrics_label_discloses_spec_fallback(gui):
     assert "≈" in gui.lbl_metrics.cget("text")
     gui.var_drone_model.set("mavic3e")
     assert "≈" not in gui.lbl_metrics.cget("text")
+
+
+def test_advanced_section_collapses_and_state_survives_toggle(gui):
+    # 기본은 접힘 — 매일 만지는 값이 아니고, RUN 이 첫 화면에 보여야 한다
+    assert gui._advanced_open is False
+    assert not gui.adv_card.winfo_manager()      # grid_remove 상태
+    gui._toggle_advanced()
+    assert gui.adv_card.winfo_manager() == "grid"
+    gui._toggle_language()                        # 재생성을 건너서도
+    assert gui._advanced_open is True
+    assert gui.adv_card.winfo_manager() == "grid"
+
+
+def test_report_button_disabled_without_report(gui, tmp_path):
+    gui._last_out_dir = str(tmp_path)             # 리포트가 없는 폴더
+    gui._refresh_report_button()
+    assert gui.btn_report.cget("state") == "disabled"
+    (tmp_path / "report_20260827_000000.html").write_text("<html></html>", encoding="utf-8")
+    gui._refresh_report_button()
+    assert gui.btn_report.cget("state") == "normal"
