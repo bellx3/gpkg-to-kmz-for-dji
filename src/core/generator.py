@@ -140,6 +140,23 @@ def polygon_features(features: List[gpkg.Feature]) -> List[Tuple[int, gpkg.Featu
             if f.geom is not None and f.geom.geom_type in ('Polygon', 'MultiPolygon')]
 
 
+def warn_filled_holes(geom, label: str):
+    """폴리곤에 구멍이 있으면 알린다.
+
+    좌표는 `exterior` 만 쓰므로 구멍은 메워진다 — 도넛 모양 필지의 안쪽도 촬영
+    대상이 된다. DJI 템플릿(`mapping2d`)에 innerBoundaryIs 를 넣어 실제로 존중되는지는
+    기체 없이 확인할 수 없어(`docs/roadmap.md` Task 4) 지금은 **채우되 말한다**.
+    """
+    parts = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
+    holes = [r for p in parts for r in getattr(p, 'interiors', [])]
+    if not holes:
+        return
+    from shapely.geometry import Polygon as _P
+    area = sum(_P(r).area for r in holes)
+    print(f'  주의: {label} 에 구멍 {len(holes)}개(약 {area:,.0f}m2)가 있어 메워집니다 '
+          f'— 그 안쪽도 촬영 대상이 됩니다.')
+
+
 def polygon_coords_from_geoms(geoms, src_epsg: Optional[int], to_epsg: int = 4326,
                               simplify_tolerance: float = 0.0,
                               geometry_buffer_m: float = 0.0) -> List[Tuple[str, str]]:
@@ -408,8 +425,24 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
     
     # 리포트용 결과 저장 리스트
     batch_results = []
+    # 이미 쓴 산출물 이름. 명명 필드값이 겹치면 예전에는 조용히 덮어써서
+    # 로그는 "완료" 를 찍는데 파일만 사라졌다(실측: 4피처 → KMZ 3개).
+    used_names = set()
+
+    def unique_name(dynm: str) -> str:
+        if dynm not in used_names:
+            used_names.add(dynm)
+            return dynm
+        for i in range(2, 10000):
+            cand = f'{dynm}_{i}'
+            if cand not in used_names:
+                used_names.add(cand)
+                print(f'  이름 중복: "{dynm}" -> "{cand}" 로 저장합니다.')
+                return cand
+        raise RuntimeError(f'이름 중복을 해소하지 못했습니다: {dynm}')
 
     def save_result(lonlat, dynm, src_name):
+        dynm = unique_name(dynm)
         if pack_kmz:
             kml_bytes = generate_kml_bytes(template_path, lonlat, set_times=set_times,
                                            set_takeoff_ref_point=set_takeoff_ref_point, overrides=overrides)
@@ -447,6 +480,7 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
 
                 geo_buf = overrides.get('geometry_buffer_m', 0.0) if overrides else 0.0
                 for idx, feat in feats:
+                    warn_filled_holes(feat.geom, f'{file_path.name}[{idx}]')
                     lonlat = polygon_coords_from_geoms(
                         [feat.geom], lyr.epsg, to_epsg=4326,
                         simplify_tolerance=simplify_tolerance,

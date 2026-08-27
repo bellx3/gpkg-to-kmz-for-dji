@@ -110,6 +110,56 @@ def read_layer(path: Path, layer: Optional[str] = None) -> Layer:
         con.close()
 
 
+class FieldStat(NamedTuple):
+    """명명 필드 후보 하나의 쓸모. total 은 피처 수."""
+    name: str
+    total: int
+    nulls: int
+    unique: int          # 비어 있지 않은 값의 서로 다른 개수
+
+    @property
+    def all_null(self) -> bool:
+        return self.nulls >= self.total
+
+    @property
+    def collisions(self) -> int:
+        """이 필드로 이름을 지으면 몇 개가 겹치는가 (빈 값도 서로 겹친다)."""
+        named = self.total - self.nulls
+        return max(0, named - self.unique) + (self.nulls - 1 if self.nulls > 1 else 0)
+
+
+def field_stats(path: Path, layer: Optional[str] = None) -> List[FieldStat]:
+    """필드마다 빈 값 수와 고유값 수를 센다.
+
+    전부 비어 있는 필드로 이름을 지으면 산출물이 하나만 남는다(실측: 83필지 중 82개
+    유실). 고르기 **전에** 그 사실을 알 수 있게 세어 둔다.
+
+    비었다의 정의는 NULL 과 공백뿐인 문자열 — 파일명이 되면 둘 다 쓸 수 없다.
+    SQL 로 세지 않고 파이썬에서 센다: 컬럼명에 따옴표가 섞여도 안전하고,
+    sanitize 규칙을 나중에 바꿔도 한 곳만 고치면 된다.
+    """
+    path = Path(path)
+    names = field_names(path, layer)
+    if not names:
+        return []
+    con = _connect(path)
+    try:
+        cur = con.cursor()
+        layer = layer or _default_layer(cur)
+        cols = ', '.join(f'"{n}"' for n in names)
+        rows = cur.execute(f'SELECT {cols} FROM "{layer}"').fetchall()
+    finally:
+        con.close()
+
+    out = []
+    for i, name in enumerate(names):
+        vals = [r[i] for r in rows]
+        nulls = sum(1 for v in vals if v is None or not str(v).strip())
+        uniq = len({str(v).strip() for v in vals if v is not None and str(v).strip()})
+        out.append(FieldStat(name, len(rows), nulls, uniq))
+    return out
+
+
 def field_names(path: Path, layer: Optional[str] = None) -> List[str]:
     """명명 필드 후보가 될 속성 컬럼 이름.
 

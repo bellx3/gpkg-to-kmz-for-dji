@@ -143,3 +143,45 @@ def test_waypoint_heights_follow_the_override(converted):
     speeds = [e.text for e in wpml.findall('.//kml:Folder/kml:Placemark/wpml:waypointSpeed', NS)]
     assert heights and set(heights) == {'95.0'}
     assert speeds and set(speeds) == {'12'}
+
+
+def test_duplicate_naming_values_do_not_overwrite(tmp_path, make_gpkg):
+    """같은 필드값이 둘이면 예전에는 조용히 덮어써서 파일이 사라졌다."""
+    from shapely.geometry import Polygon
+    from pyproj import CRS, Transformer
+    fwd = Transformer.from_crs(CRS.from_epsg(4326), CRS.from_epsg(5186), always_xy=True)
+    cx, cy = fwd.transform(JEJU_LON, JEJU_LAT)
+    sq = lambda ox, oy: Polygon([(ox, oy), (ox + 100, oy), (ox + 100, oy + 100), (ox, oy + 100)])
+    src = tmp_path / 'in'
+    src.mkdir()
+    make_gpkg(src / 'p.gpkg', [
+        ('같은이름', 'a', sq(cx, cy)),
+        ('같은이름', 'b', sq(cx + 300, cy)),
+        ('다른이름', 'c', sq(cx + 600, cy)),
+    ])
+    out = tmp_path / 'out'
+    batch_process_inputs(src, TEMPLATES / 'template.kml', TEMPLATES / 'waylines.wpml',
+                         out_dir=out, input_format='gpkg', naming_field='name',
+                         set_times=False, pack_kmz=True, overrides=OVERRIDES)
+    names = sorted(p.name for p in out.glob('*.kmz'))
+    assert names == ['같은이름.kmz', '같은이름_2.kmz', '다른이름.kmz']
+
+
+def test_hole_in_polygon_is_reported(tmp_path, make_gpkg, capsys):
+    """구멍은 메워진다 — 조용히 메우지 않고 말하는지 본다."""
+    from shapely.geometry import Polygon
+    from pyproj import CRS, Transformer
+    fwd = Transformer.from_crs(CRS.from_epsg(4326), CRS.from_epsg(5186), always_xy=True)
+    cx, cy = fwd.transform(JEJU_LON, JEJU_LAT)
+    donut = Polygon(
+        [(cx, cy), (cx + 300, cy), (cx + 300, cy + 300), (cx, cy + 300)],
+        [[(cx + 100, cy + 100), (cx + 200, cy + 100), (cx + 200, cy + 200), (cx + 100, cy + 200)]],
+    )
+    src = tmp_path / 'in'
+    src.mkdir()
+    make_gpkg(src / 'p.gpkg', [('도넛', 'a', donut)])
+    batch_process_inputs(src, TEMPLATES / 'template.kml', TEMPLATES / 'waylines.wpml',
+                         out_dir=tmp_path / 'out', input_format='gpkg', naming_field='name',
+                         set_times=False, pack_kmz=True, overrides=OVERRIDES)
+    out = capsys.readouterr().out
+    assert '구멍' in out and '메워집니다' in out

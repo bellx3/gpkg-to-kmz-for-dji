@@ -84,7 +84,7 @@ KMZ 안의 파일명은 **반드시 루트에 `template.kml` 과 `waylines.wpml`
 ### `src/core/` 의 역할 분담
 
 - **`generator.py`** (645줄) — 파싱·재투영·버퍼·simplify·주입·ZIP·배치. 진입점은 `batch_process_inputs()`.
-- **`gpkg.py`** — GPKG 리더. **GeoPandas 를 쓰지 않는다** — GeoPackage 는 SQLite 파일이라
+- **`gpkg.py`** — GPKG 리더 + `field_stats()`(명명 필드의 빈 값·고유값 계수 — GUI 가 전부 빈 필드를 후보에서 빼는 근거). **GeoPandas 를 쓰지 않는다** — GeoPackage 는 SQLite 파일이라
   표준 라이브러리 `sqlite3` 로 읽고 지오메트리 BLOB 에서 WKB 만 떼어 `shapely.wkb` 에 넘긴다.
   이 135줄이 GeoPandas·pandas·fiona·pyogrio 258MB 를 대신한다(`docs/dependency-diet.md`).
   되돌리지 말 것. 재투영은 `pyproj.Transformer` + `shapely.ops.transform` 이 하고,

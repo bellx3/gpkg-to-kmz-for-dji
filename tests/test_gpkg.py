@@ -81,3 +81,24 @@ def test_multipolygon_survives_the_round_trip(tmp_path, make_gpkg):
     geom = gpkg.read_layer(p).features[0].geom
     assert geom.geom_type == 'MultiPolygon'
     assert geom.area == mp.area
+
+
+def test_field_stats_counts_empties_and_uniques(tmp_path, make_gpkg):
+    # name 은 전부 고유, note 는 둘이 같고 하나는 공백뿐 → 파일명으로 쓰면 겹친다
+    p = make_gpkg(tmp_path / 'st.gpkg', [
+        ('가', 'x', SQUARE), ('나', 'x', SQUARE), ('다', '   ', SQUARE),
+    ])
+    st = {x.name: x for x in gpkg.field_stats(p)}
+    assert st['name'].total == 3 and st['name'].unique == 3
+    assert st['name'].collisions == 0
+    assert st['note'].nulls == 1          # 공백뿐인 값도 빈 값이다
+    assert st['note'].unique == 1         # 'x' 하나
+    assert st['note'].collisions == 1     # 'x' 둘 중 하나가 겹친다
+
+
+def test_field_stats_flags_all_empty_field(tmp_path, make_gpkg):
+    # 전부 비어 있으면 파일명으로 쓸 수 없다 — GUI 가 후보에서 빼는 근거
+    p = make_gpkg(tmp_path / 'e.gpkg', [('가', None, SQUARE), ('나', None, SQUARE)])
+    st = {x.name: x for x in gpkg.field_stats(p)}
+    assert st['note'].all_null is True
+    assert st['name'].all_null is False

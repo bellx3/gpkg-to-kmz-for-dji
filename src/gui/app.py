@@ -239,6 +239,10 @@ TRANSLATIONS = {
         "confirm_danger_m": "안전 판정이 '위험'입니다.\n{msgs}\n\n그래도 실행할까요?",
         "confirm_quit_t": "배치 실행 중",
         "confirm_quit_m": "배치가 아직 실행 중입니다. 종료하면 쓰다 만 파일이 남을 수 있습니다.\n종료할까요?",
+        "field_quality_ok": "{n}개 전부 고유 — 이름이 겹치지 않습니다",
+        "field_quality_dup": "{d}개 중복 — 겹치면 _2 가 붙습니다",
+        "field_quality_auto": "파일 이름으로 자동 명명합니다",
+        "fields_dropped": "비어 있어 제외한 필드: {names}",
         "fields_loaded": "필드 {n}개를 불러왔습니다.",
         "fields_none": "이름으로 쓸 필드를 찾지 못했습니다.\n파일명 자동 명명으로 진행됩니다.",
         "preset_loaded": "프리셋을 불러왔습니다.",
@@ -297,6 +301,10 @@ TRANSLATIONS = {
         "confirm_danger_m": "Safety check says DANGER.\n{msgs}\n\nRun anyway?",
         "confirm_quit_t": "Batch Running",
         "confirm_quit_m": "A batch is still running. Quitting may leave half-written files.\nQuit anyway?",
+        "field_quality_ok": "{n} unique — no filename collisions",
+        "field_quality_dup": "{d} duplicates — collisions get _2",
+        "field_quality_auto": "Named automatically from the file name",
+        "fields_dropped": "Dropped (all empty): {names}",
         "fields_loaded": "Loaded {n} fields.",
         "fields_none": "No naming fields found.\nFiles will be named automatically.",
         "preset_loaded": "Preset loaded.",
@@ -327,6 +335,7 @@ class App(ctk.CTk):
 
         # 언어 토글이 UI 를 통째로 재생성하므로, 위젯 밖에 살아남아야 하는 상태는 여기 둔다
         self._naming_values = [AUTO_NAME]
+        self._field_stats = {}          # 필드명 -> gpkg.FieldStat, 재생성에서 살아남는다
         self._map_style = "Esri Dark"
         self._advanced_open = False
         self._last_safety = "safe"
@@ -609,7 +618,13 @@ class App(ctk.CTk):
         ctk.CTkButton(card, text=self._tr("load_fields"), width=48, font=self.font_body,
                       command=self._refresh_naming_fields).grid(row=4, column=2, padx=(5, 12), pady=3)
 
-        self._pad_bottom(card, 5)
+        # 고른 필드가 파일명으로 쓸 만한지 — 고르는 자리에서 바로 보인다
+        self.lbl_field_quality = ctk.CTkLabel(card, text="", font=("Consolas", 11),
+                                              text_color=TX_DIM, anchor="w")
+        self.lbl_field_quality.grid(row=5, column=1, columnspan=2, sticky="w", pady=(0, 2))
+        self._update_field_quality()
+
+        self._pad_bottom(card, 6)
 
     # ---- ② 미션 ----
     def _build_mission_card(self, row_idx):
@@ -715,6 +730,7 @@ class App(ctk.CTk):
             v.trace_add("write", lambda *a: self._update_safety_status())
         for v in (self.var_input_dir, self.var_input_format, self.var_geometry_buffer):
             v.trace_add("write", lambda *a: self._debounce_map_preview())
+        self.var_naming_field.trace_add("write", lambda *a: self._update_field_quality())
 
     # --------------------------------------------------------------------------
     # 로직
@@ -911,8 +927,10 @@ class App(ctk.CTk):
                 messagebox.showwarning("Warning", self._tr("no_files").format(pat="*.gpkg, *.kml"))
                 return
 
-        candidates = self._get_gpkg_fields(input_dir, None) if fmt == 'gpkg' \
-            else self._get_kml_fields(input_dir)
+        if fmt == 'gpkg':
+            candidates, dropped = self._get_gpkg_fields(input_dir, None)
+        else:
+            candidates, dropped = self._get_kml_fields(input_dir), []
 
         if not candidates:
             # 가짜 후보를 만들어 넣지 않는다(B5) — 자동 명명으로 안내
@@ -925,22 +943,59 @@ class App(ctk.CTk):
         self._naming_values = [AUTO_NAME] + candidates
         self.cb_naming.configure(values=self._naming_values)
         self.var_naming_field.set('ADDRE_1_2' if 'ADDRE_1_2' in candidates else candidates[0])
-        messagebox.showinfo("Done", self._tr("fields_loaded").format(n=len(candidates)))
+        self._update_field_quality()
+        msg = self._tr("fields_loaded").format(n=len(candidates))
+        if dropped:
+            # 전부 비어 있는 필드는 후보에서 뺐다 — 고르면 산출물이 하나만 남는다
+            msg += chr(10) * 2 + self._tr("fields_dropped").format(names=", ".join(dropped))
+        messagebox.showinfo("Done", msg)
 
-    def _get_gpkg_fields(self, input_dir: Path, layer: 'str | None') -> list:
+    def _get_gpkg_fields(self, input_dir: Path, layer: 'str | None'):
+        """(후보 필드, 전부 비어서 제외한 필드) 를 돌려주고 품질을 기억한다.
+
+        전부 비어 있는 필드는 **후보에서 뺀다** — 고르면 산출물이 하나만 남으므로
+        (실측: 83필지 중 82개 유실) 목록에 두는 것 자체가 함정이다.
+        """
         files = list(input_dir.glob('*.gpkg'))
         if not files:
-            return []
+            return [], []
         intersection = None
         union = set()
+        stats = {}
         for p in files[:10]:
             try:
-                cols = set(gpkg.field_names(p, layer=layer))
+                st = gpkg.field_stats(p, layer=layer)
+                cols = {x.name for x in st}
                 union.update(cols)
                 intersection = cols if intersection is None else intersection.intersection(cols)
+                for x in st:   # 여러 파일이면 나쁜 쪽을 남긴다
+                    prev = stats.get(x.name)
+                    if prev is None or x.all_null or x.collisions > prev.collisions:
+                        stats[x.name] = x
             except Exception:
                 pass
-        return sorted(intersection) if intersection else sorted(union)
+        names = sorted(intersection) if intersection else sorted(union)
+        self._field_stats = stats
+        dropped = [n for n in names if n in stats and stats[n].all_null]
+        return [n for n in names if n not in dropped], dropped
+
+    def _update_field_quality(self):
+        """고른 명명 필드가 파일명으로 쓸 만한지 한 줄로 보여 준다."""
+        if not hasattr(self, "lbl_field_quality"):
+            return
+        name = effective_naming_field(self.var_naming_field.get())
+        if name is None:
+            self.lbl_field_quality.configure(text=self._tr("field_quality_auto"), text_color=TX_DIM)
+            return
+        st = getattr(self, "_field_stats", {}).get(name)
+        if st is None:
+            self.lbl_field_quality.configure(text="", text_color=TX_DIM)
+        elif st.collisions:
+            self.lbl_field_quality.configure(
+                text=self._tr("field_quality_dup").format(d=st.collisions), text_color=COL_WARN)
+        else:
+            self.lbl_field_quality.configure(
+                text=self._tr("field_quality_ok").format(n=st.unique), text_color=TX_DIM)
 
     def _get_kml_fields(self, input_dir: Path) -> list:
         files = list(input_dir.glob('*.kml'))
