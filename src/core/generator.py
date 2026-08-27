@@ -411,15 +411,68 @@ def load_wpml_bytes_with_overrides(wpml_path: Path, overrides: Optional[Dict] = 
 # 배치 처리 (KML/GPKG 지원)
 # -----------------------------
 
+# 입력 경로 규약 — 폴더도, 파일도, 여러 파일도 같은 자리에 온다.
+# 파일 여러 개는 세미콜론으로 구분한다(경로에 공백이 흔하므로 공백으로 쪼갤 수 없다).
+INPUT_SEP = ';'
+
+_EXT_BY_FORMAT = {
+    'gpkg': ('.gpkg',),
+    'kml': ('.kml',),
+    'auto': ('.gpkg', '.kml'),
+}
+
+
+def resolve_input_files(spec, input_format: str = 'auto') -> List[Path]:
+    """입력 지정(폴더 · 파일 · 세미콜론으로 이은 파일 목록)을 처리할 파일 목록으로 바꾼다.
+
+    폴더면 포맷에 맞는 확장자를 훑고, 파일이면 그 파일만 쓴다 — 폴더에서 골라내는 대신
+    파일을 직접 지정할 수 있어야 한다는 요구가 여기서 갈린다. 존재하지 않는 경로는 버린다.
+    확장자가 포맷과 맞지 않는 파일은 **사용자가 명시적으로 고른 것이므로 버리지 않는다** —
+    포맷 드롭다운은 폴더를 훑을 때의 필터일 뿐이다.
+    """
+    exts = _EXT_BY_FORMAT.get((input_format or 'auto').lower(), _EXT_BY_FORMAT['auto'])
+    files: List[Path] = []
+
+    parts = spec if isinstance(spec, (list, tuple)) else str(spec).split(INPUT_SEP)
+    for part in parts:
+        raw = str(part).strip().strip('"')
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.is_dir():
+            for ext in exts:
+                files.extend(sorted(path.glob(f'*{ext}')))
+        elif path.is_file():
+            files.append(path)
+
+    # 같은 파일을 두 번 처리하지 않는다(폴더와 그 안의 파일을 함께 지정한 경우).
+    seen, unique = set(), []
+    for f in files:
+        key = str(f.resolve()).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(f)
+    return unique
+
+
+def input_base_dir(spec) -> Path:
+    """산출물 기본 위치를 정할 때 쓰는 기준 폴더 — 폴더면 그 폴더, 파일이면 그 부모."""
+    first = str(spec).split(INPUT_SEP)[0].strip().strip('"') if not isinstance(spec, (list, tuple)) else str(spec[0])
+    path = Path(first)
+    return path if path.is_dir() else path.parent
+
+
 def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path: Path, out_dir: Optional[Path] = None,
                          input_format: str = 'auto', naming_field: Optional[str] = None, layer: Optional[str] = None,
                          set_times: bool = True, set_takeoff_ref_point: bool = False, pack_kmz: bool = True,
                          overrides: Optional[Dict] = None, simplify_tolerance: float = 0.0):
-    missions_dir = Path(missions_dir)
+    # missions_dir 은 이제 폴더에 한정되지 않는다 — 파일 하나, 또는 세미콜론으로 이은 목록도 받는다.
+    input_spec = missions_dir
+    base_dir = input_base_dir(input_spec)
     template_path = Path(template_path)
     waylines_path = Path(waylines_path)
     if out_dir is None:
-        out_dir = missions_dir.parent / 'output'
+        out_dir = base_dir.parent / 'output'
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     
@@ -519,13 +572,7 @@ def batch_process_inputs(missions_dir: Path, template_path: Path, waylines_path:
     count_ok = 0
     count_err = 0
 
-    files = []
-    if input_format == 'gpkg':
-        files = sorted(missions_dir.glob('*.gpkg'))
-    elif input_format == 'kml':
-        files = sorted(missions_dir.glob('*.kml'))
-    else:  # auto
-        files = sorted(list(missions_dir.glob('*.gpkg')) + list(missions_dir.glob('*.kml')))
+    files = resolve_input_files(input_spec, input_format)
 
     for src in files:
         is_gpkg = src.suffix.lower() == '.gpkg'
@@ -576,7 +623,8 @@ if __name__ == '__main__':
 
     import argparse
     parser = argparse.ArgumentParser(description='KML 템플릿에 폴리곤 좌표를 주입하여 KMZ/KML 생성 (KML/GPKG 입력 지원)')
-    parser.add_argument('--input-dir', type=str, default=str(base / 'input'), help='입력 폴더 경로 (KML 또는 GPKG)')
+    parser.add_argument('--input-dir', type=str, default=str(base / 'input'),
+                        help='입력 폴더, 또는 파일 경로. 여러 파일은 세미콜론(;)으로 잇는다 (KML/GPKG)')
     parser.add_argument('--input-format', type=str, choices=['auto', 'kml', 'gpkg'], default='gpkg', help='입력 포맷 지정(auto/kml/gpkg)')
     parser.add_argument('--template', type=str, default=str(templates / 'template.kml'), help='템플릿 KML 경로')
     parser.add_argument('--waylines', type=str, default=str(templates / 'waylines.wpml'), help='waylines.wpml 경로')
